@@ -1,104 +1,108 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# PTO Planner v3
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+A modern, user-friendly application for tracking and managing Paid Time Off (PTO).
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+## Database Schema Setup
 
-## Features
+This application uses Supabase as the backend database service. Follow these steps to set up the database schema:
 
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Middleware
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
+### 1. Create a Supabase Project
 
-## Demo
+1. Go to [Supabase](https://supabase.com/) and sign up or log in.
+2. Create a new project with a name of your choice.
+3. Make note of your project URL and public anon key, which you'll need for the environment variables.
 
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
+### 2. Set Up Environment Variables
 
-## Deploy to Vercel
+Create a `.env.local` file in the root directory of your project with the following variables:
 
-Vercel deployment will guide you through creating a Supabase account and project.
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
+Replace `your_supabase_url` and `your_supabase_anon_key` with the values from your Supabase project settings.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
+### 3. Apply Database Migrations
 
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
+There are two ways to set up the database schema:
 
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
+#### Option 1: Using Supabase CLI (Recommended for Development)
 
-## Clone and run locally
-
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
-
-2. Create a Next.js app using the Supabase Starter template npx command
-
-   ```bash
-   npx create-next-app --example with-supabase with-supabase-app
+1. Install the Supabase CLI if you haven't already:
+   ```
+   npm install -g supabase
    ```
 
-   ```bash
-   yarn create next-app --example with-supabase with-supabase-app
+2. Login to Supabase:
+   ```
+   supabase login
    ```
 
-   ```bash
-   pnpm create next-app --example with-supabase with-supabase-app
+3. Link your project:
+   ```
+   supabase link --project-ref your-project-ref
    ```
 
-3. Use `cd` to change into the app's directory
-
-   ```bash
-   cd with-supabase-app
+4. Push the migrations to your Supabase project:
+   ```
+   supabase db push
    ```
 
-4. Rename `.env.example` to `.env.local` and update the following:
+#### Option 2: Manual SQL Execution
 
+1. Go to the SQL Editor in your Supabase dashboard.
+2. Copy the contents of `supabase/migrations/20240101000000_initial_schema.sql`.
+3. Paste and execute the SQL in the Supabase SQL Editor.
+4. Optionally, also execute the `supabase/seed.sql` file to add test data.
+
+### 4. Verify Setup
+
+You should now have the following tables in your Supabase database:
+- users
+- pto_settings
+- pto_accrual_rules
+- pto_transactions
+- pto_days
+- custom_holidays
+- weekend_config
+
+## Database Schema Documentation
+
+For detailed information about the database schema, see [Database Schema Documentation](docs/database-schema.md).
+
+## Development
+
+### Prerequisites
+
+- Node.js 16+ 
+- npm or yarn
+- Supabase account
+
+### Local Development
+
+1. Install dependencies:
    ```
-   NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=[INSERT SUPABASE PROJECT API ANON KEY]
+   npm install
    ```
 
-   Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` can be found in [your Supabase project's API settings](https://app.supabase.com/project/_/settings/api)
-
-5. You can now run the Next.js local development server:
-
-   ```bash
+2. Run the development server:
+   ```
    npm run dev
    ```
 
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
+## Database Schema Overview
 
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
+The PTO Planner uses the following tables:
 
-## Feedback and issues
+1. **users** - Extended user profiles linked to Supabase Auth
+2. **pto_settings** - User-specific PTO configuration
+3. **pto_accrual_rules** - Rules defining how PTO accrues
+4. **pto_transactions** - Record of all PTO balance changes
+5. **pto_days** - Individual PTO days requested by users
+6. **custom_holidays** - User-defined holidays
+7. **weekend_config** - Which days are considered weekends
 
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
-
-## More Supabase examples
-
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+For a visual representation and detailed description, see the [database schema documentation](docs/database-schema.md).
