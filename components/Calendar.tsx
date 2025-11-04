@@ -20,6 +20,7 @@ interface CalendarProps {
   suggestedDays?: Date[];
   publicHolidays?: Date[];
   weekendDays?: number[]; // 0 = Sunday, 1 = Monday, etc.
+  onYearChange?: (year: number) => void;
 }
 
 const MONTHS = [
@@ -35,6 +36,7 @@ const Calendar: React.FC<CalendarProps> = ({
   suggestedDays = [],
   publicHolidays = [],
   weekendDays = [0, 6], // Sunday and Saturday by default
+  onYearChange,
 }) => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [isDesktop, setIsDesktop] = useState(true); // Assume desktop first, will be updated in useEffect
@@ -57,17 +59,23 @@ const Calendar: React.FC<CalendarProps> = ({
 
   // Navigate to previous year
   const prevYear = () => {
-    setCurrentYear(currentYear - 1);
+    const newYear = currentYear - 1;
+    setCurrentYear(newYear);
+    if (onYearChange) onYearChange(newYear);
   };
 
   // Navigate to next year
   const nextYear = () => {
-    setCurrentYear(currentYear + 1);
+    const newYear = currentYear + 1;
+    setCurrentYear(newYear);
+    if (onYearChange) onYearChange(newYear);
   };
 
   // Navigate to current year
   const goToToday = () => {
-    setCurrentYear(new Date().getFullYear());
+    const newYear = new Date().getFullYear();
+    setCurrentYear(newYear);
+    if (onYearChange) onYearChange(newYear);
   };
 
   // Check if a date is a weekend

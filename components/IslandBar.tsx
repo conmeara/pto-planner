@@ -31,6 +31,11 @@ export enum TabType {
 // IslandBar props
 interface IslandBarProps {
   className?: string;
+  onCountryChange?: (country: string) => void;
+  onShowHolidaysChange?: (show: boolean) => void;
+  onRefreshHolidays?: () => Promise<void>;
+  selectedCountry?: string;
+  showHolidays?: boolean;
 }
 
 // Default PTO Settings
@@ -43,7 +48,14 @@ const DEFAULT_PTO_SETTINGS = {
   ptoColor: 'green-500'
 };
 
-const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
+const IslandBar: React.FC<IslandBarProps> = ({ 
+  className,
+  onCountryChange: externalCountryChange,
+  onShowHolidaysChange: externalShowHolidaysChange,
+  onRefreshHolidays: externalRefreshHolidays,
+  selectedCountry: externalSelectedCountry = 'US',
+  showHolidays: externalShowHolidays = true,
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>(TabType.NONE);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [tabsWidth, setTabsWidth] = useState<number>(0);
@@ -51,11 +63,20 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   // State for each tab
   const [ptoSettings, setPtoSettings] = useState(DEFAULT_PTO_SETTINGS);
   const [weekendDays, setWeekendDays] = useState<number[]>([0, 6]); // Sunday and Saturday
-  const [selectedCountry, setSelectedCountry] = useState('US');
-  const [showHolidays, setShowHolidays] = useState(true);
+  const [selectedCountry, setSelectedCountry] = useState(externalSelectedCountry);
+  const [showHolidays, setShowHolidays] = useState(externalShowHolidays);
   const [currentStrategy, setCurrentStrategy] = useState<StrategyType | undefined>(undefined);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
+  
+  // Sync external props with internal state
+  useEffect(() => {
+    setSelectedCountry(externalSelectedCountry);
+  }, [externalSelectedCountry]);
+  
+  useEffect(() => {
+    setShowHolidays(externalShowHolidays);
+  }, [externalShowHolidays]);
   
   // Get width of tabs for submenu width matching
   useEffect(() => {
@@ -86,17 +107,22 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
 
   const handleCountryChange = (country: string) => {
     setSelectedCountry(country);
-    // Here you would also fetch holidays for the selected country
+    if (externalCountryChange) {
+      externalCountryChange(country);
+    }
   };
 
   const handleShowHolidaysChange = (show: boolean) => {
     setShowHolidays(show);
+    if (externalShowHolidaysChange) {
+      externalShowHolidaysChange(show);
+    }
   };
 
   const handleRefreshHolidays = async (): Promise<void> => {
-    // Here you would fetch holidays from an API
-    // For now, just simulate a delay
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
+    if (externalRefreshHolidays) {
+      await externalRefreshHolidays();
+    }
   };
 
   const handleSelectStrategy = (strategy: StrategyType) => {
