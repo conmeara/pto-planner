@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react';
+'use client';
+
+import React, { useState, useEffect, useTransition } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
+import { usePlanner } from '@/contexts/PlannerContext';
+import { addPTODay, deletePTODay } from '@/app/actions/pto-actions';
 
 // Day type enum
 export enum DayType {
@@ -13,15 +17,6 @@ export enum DayType {
   TODAY = 'today'
 }
 
-// Calendar props
-interface CalendarProps {
-  onDayClick?: (date: Date) => void;
-  selectedDays?: Date[];
-  suggestedDays?: Date[];
-  publicHolidays?: Date[];
-  weekendDays?: number[]; // 0 = Sunday, 1 = Monday, etc.
-}
-
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -29,15 +24,36 @@ const MONTHS = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const Calendar: React.FC<CalendarProps> = ({
-  onDayClick,
-  selectedDays = [],
-  suggestedDays = [],
-  publicHolidays = [],
-  weekendDays = [0, 6], // Sunday and Saturday by default
-}) => {
+const Calendar: React.FC = () => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [isDesktop, setIsDesktop] = useState(true); // Assume desktop first, will be updated in useEffect
+  const [isDesktop, setIsDesktop] = useState(true);
+  const [isPending, startTransition] = useTransition();
+  const [processingDates, setProcessingDates] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
+
+  // Get data from context
+  const {
+    selectedDays,
+    suggestedDays,
+    isDateSelected,
+    isDateSuggested,
+    isDateHoliday,
+    isDateWeekend,
+    toggleDaySelection,
+    plannerData,
+    isAuthenticated,
+    getSettings,
+  } = usePlanner();
+
+  // Prevent hydration mismatch by only rendering calendar after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Get weekend days from context (works with localStorage or DB)
+  const weekendDays = plannerData?.weekendConfig
+    ?.filter((config) => config.is_weekend)
+    .map((config) => config.day_of_week) || [0, 6];
 
   // Check if we're on desktop or mobile
   useEffect(() => {
@@ -70,37 +86,6 @@ const Calendar: React.FC<CalendarProps> = ({
     setCurrentYear(new Date().getFullYear());
   };
 
-  // Check if a date is a weekend
-  const isWeekend = (date: Date) => {
-    return weekendDays.includes(date.getDay());
-  };
-
-  // Check if a date is a public holiday
-  const isPublicHoliday = (date: Date) => {
-    return publicHolidays.some(holiday => 
-      holiday.getDate() === date.getDate() && 
-      holiday.getMonth() === date.getMonth() && 
-      holiday.getFullYear() === date.getFullYear()
-    );
-  };
-
-  // Check if a date is selected as PTO
-  const isSelectedPTO = (date: Date) => {
-    return selectedDays.some(selectedDay => 
-      selectedDay.getDate() === date.getDate() && 
-      selectedDay.getMonth() === date.getMonth() && 
-      selectedDay.getFullYear() === date.getFullYear()
-    );
-  };
-
-  // Check if a date is suggested for PTO
-  const isSuggestedPTO = (date: Date) => {
-    return suggestedDays.some(suggestedDay => 
-      suggestedDay.getDate() === date.getDate() && 
-      suggestedDay.getMonth() === date.getMonth() && 
-      suggestedDay.getFullYear() === date.getFullYear()
-    );
-  };
 
   // Check if a date is today
   const isToday = (date: Date) => {
@@ -113,10 +98,10 @@ const Calendar: React.FC<CalendarProps> = ({
   // Get the day type for styling
   const getDayType = (date: Date): DayType => {
     if (isToday(date)) return DayType.TODAY;
-    if (isSelectedPTO(date)) return DayType.SELECTED_PTO;
-    if (isSuggestedPTO(date)) return DayType.SUGGESTED_PTO;
-    if (isPublicHoliday(date)) return DayType.PUBLIC_HOLIDAY;
-    if (isWeekend(date)) return DayType.WEEKEND;
+    if (isDateSelected(date)) return DayType.SELECTED_PTO;
+    if (isDateSuggested(date)) return DayType.SUGGESTED_PTO;
+    if (isDateHoliday(date)) return DayType.PUBLIC_HOLIDAY;
+    if (isDateWeekend(date)) return DayType.WEEKEND;
     return DayType.NORMAL;
   };
 
@@ -138,11 +123,65 @@ const Calendar: React.FC<CalendarProps> = ({
     return cn(baseClasses, typeClasses[type]);
   };
 
-  // Handle day click
-  const handleDayClick = (date: Date) => {
-    if (onDayClick) {
-      onDayClick(date);
+  // Handle day click with server action (if authenticated) or localStorage (if not)
+  const handleDayClick = async (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+
+    // Don't process if already processing this date
+    if (processingDates.has(dateStr)) {
+      return;
     }
+
+    // Optimistically update UI immediately
+    toggleDaySelection(date);
+
+    // If not authenticated, just use localStorage (handled by context)
+    if (!isAuthenticated) {
+      return;
+    }
+
+    // If authenticated, persist to database
+    setProcessingDates((prev) => new Set([...prev, dateStr]));
+
+    startTransition(async () => {
+      try {
+        const isSelected = isDateSelected(date);
+
+        if (isSelected) {
+          // Date was selected, now delete it
+          const result = await deletePTODay(dateStr);
+          if (!result.success) {
+            console.error('Failed to delete PTO day:', result.error);
+            // Revert optimistic update on error
+            toggleDaySelection(date);
+          }
+        } else {
+          // Date was not selected, add it
+          const settings = getSettings();
+          const ptoAmount = settings.pto_display_unit === 'hours'
+            ? settings.hours_per_day || 8
+            : 1;
+
+          const result = await addPTODay(dateStr, ptoAmount);
+          if (!result.success) {
+            console.error('Failed to add PTO day:', result.error);
+            // Revert optimistic update on error
+            toggleDaySelection(date);
+          }
+        }
+      } catch (error) {
+        console.error('Error updating PTO day:', error);
+        // Revert optimistic update on error
+        toggleDaySelection(date);
+      } finally {
+        // Remove from processing set
+        setProcessingDates((prev) => {
+          const next = new Set(prev);
+          next.delete(dateStr);
+          return next;
+        });
+      }
+    });
   };
 
   // Render a month
@@ -186,6 +225,17 @@ const Calendar: React.FC<CalendarProps> = ({
       </div>
     );
   };
+
+  // Prevent hydration mismatch - only render after client-side mount
+  if (!mounted) {
+    return (
+      <div className="w-full max-w-6xl mx-auto">
+        <div className="flex justify-center items-center h-96">
+          <p className="text-gray-500">Loading calendar...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-6xl mx-auto">

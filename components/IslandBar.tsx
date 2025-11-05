@@ -33,37 +33,18 @@ interface IslandBarProps {
   className?: string;
 }
 
-// Default PTO Settings
-const DEFAULT_PTO_SETTINGS = {
-  initialBalance: 15,
-  asOfDate: new Date().toISOString().split('T')[0],
-  accrualFrequency: 'monthly',
-  accrualAmount: 1.25,
-  maxCarryover: 5,
-  ptoColor: 'green-500'
-};
-
 const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<TabType>(TabType.NONE);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [tabsWidth, setTabsWidth] = useState<number>(0);
-  
-  // State for each tab
-  const [ptoSettings, setPtoSettings] = useState(DEFAULT_PTO_SETTINGS);
-  const [weekendDays, setWeekendDays] = useState<number[]>([0, 6]); // Sunday and Saturday
-  const [selectedCountry, setSelectedCountry] = useState('US');
-  const [showHolidays, setShowHolidays] = useState(true);
-  const [currentStrategy, setCurrentStrategy] = useState<StrategyType | undefined>(undefined);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
-  
+
   // Get width of tabs for submenu width matching
   useEffect(() => {
     if (tabsRef.current) {
       setTabsWidth(tabsRef.current.offsetWidth);
     }
   }, [activeTab]);
-  
+
   // Toggle tab function
   const toggleTab = (tab: TabType) => {
     if (activeTab === tab) {
@@ -71,61 +52,6 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
     } else {
       setActiveTab(tab);
     }
-  };
-
-  // Tab handlers
-  const handlePTOSettingsChange = (settings: typeof ptoSettings) => {
-    setPtoSettings(settings);
-    // Here you would also persist settings to your backend/database
-  };
-
-  const handleWeekendChange = (days: number[]) => {
-    setWeekendDays(days);
-    // Here you would also persist weekend configuration
-  };
-
-  const handleCountryChange = (country: string) => {
-    setSelectedCountry(country);
-    // Here you would also fetch holidays for the selected country
-  };
-
-  const handleShowHolidaysChange = (show: boolean) => {
-    setShowHolidays(show);
-  };
-
-  const handleRefreshHolidays = async (): Promise<void> => {
-    // Here you would fetch holidays from an API
-    // For now, just simulate a delay
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
-  };
-
-  const handleSelectStrategy = (strategy: StrategyType) => {
-    setCurrentStrategy(strategy);
-  };
-
-  const handleApplySuggestions = async (): Promise<void> => {
-    // Here you would apply the selected strategy
-    // For now, just simulate a delay
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1500));
-  };
-
-  const handleSignIn = async (email: string) => {
-    // Here you would trigger Supabase magic link auth
-    // For now, just simulate a delay and success
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1500));
-    setIsLoggedIn(true);
-    setUserEmail(email);
-  };
-
-  const handleSignOut = () => {
-    setIsLoggedIn(false);
-    setUserEmail(undefined);
-  };
-
-  const handleSave = async (): Promise<void> => {
-    // Here you would save the user's PTO plan
-    // For now, just simulate a delay
-    await new Promise<void>((resolve) => setTimeout(() => resolve(), 1000));
   };
 
   // Tab configuration
@@ -173,9 +99,9 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   };
 
   return (
-    <div className="w-full flex flex-col items-center">
+    <div className="fixed top-8 left-0 right-0 z-50 flex justify-center pointer-events-none">
       {/* Island Bar Container */}
-      <div className="flex justify-center">
+      <div className="pointer-events-auto">
         <motion.div
           initial={{ y: -10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -231,58 +157,35 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                     {activeTab === TabType.PTO && (
                       <div>
                         <h3 className="text-xl font-semibold mb-4">PTO Settings</h3>
-                        <PTOTab 
-                          settings={ptoSettings}
-                          onSettingsChange={handlePTOSettingsChange}
-                        />
+                        <PTOTab />
                       </div>
                     )}
-                    
+
                     {activeTab === TabType.SUGGESTED_PTO && (
                       <div>
                         <h3 className="text-xl font-semibold mb-4">Suggested PTO Strategies</h3>
-                        <SuggestedPTOTab 
-                          availablePTO={15} // This would come from your calculated PTO balance
-                          onSelectStrategy={handleSelectStrategy}
-                          onApplySuggestions={handleApplySuggestions}
-                          currentStrategy={currentStrategy}
-                        />
+                        <SuggestedPTOTab />
                       </div>
                     )}
-                    
+
                     {activeTab === TabType.PUBLIC_HOLIDAYS && (
                       <div>
                         <h3 className="text-xl font-semibold mb-4">Public Holidays</h3>
-                        <HolidaysTab 
-                          selectedCountry={selectedCountry}
-                          showHolidays={showHolidays}
-                          onCountryChange={handleCountryChange}
-                          onShowHolidaysChange={handleShowHolidaysChange}
-                          onRefreshHolidays={handleRefreshHolidays}
-                        />
+                        <HolidaysTab />
                       </div>
                     )}
-                    
+
                     {activeTab === TabType.WEEKENDS && (
                       <div>
                         <h3 className="text-xl font-semibold mb-4">Weekend Configuration</h3>
-                        <WeekendTab 
-                          weekendDays={weekendDays}
-                          onWeekendChange={handleWeekendChange}
-                        />
+                        <WeekendTab />
                       </div>
                     )}
-                    
+
                     {activeTab === TabType.SAVE && (
                       <div>
                         <h3 className="text-xl font-semibold mb-4">Save & Account</h3>
-                        <SaveTab 
-                          isLoggedIn={isLoggedIn}
-                          email={userEmail}
-                          onSignIn={handleSignIn}
-                          onSignOut={handleSignOut}
-                          onSave={handleSave}
-                        />
+                        <SaveTab />
                       </div>
                     )}
                   </div>

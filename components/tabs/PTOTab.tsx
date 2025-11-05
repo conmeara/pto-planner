@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import { Calendar, Palette } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { usePlanner } from '@/contexts/PlannerContext';
+import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
+import PTOBalanceCard from '@/components/PTOBalanceCard';
 
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
@@ -14,7 +16,7 @@ const ACCRUAL_FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' }
 ];
 
-// PTO color options
+// PTO color options (note: color is currently not stored in DB, for future use)
 const PTO_COLORS = [
   { value: 'green-500', label: 'Green', class: 'bg-green-500' },
   { value: 'blue-500', label: 'Blue', class: 'bg-blue-500' },
@@ -24,33 +26,58 @@ const PTO_COLORS = [
   { value: 'emerald-500', label: 'Emerald', class: 'bg-emerald-500' },
 ];
 
-interface PTOSettings {
+interface LocalPTOSettings {
   initialBalance: number;
   asOfDate: string;
-  accrualFrequency: string;
+  accrualFrequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   accrualAmount: number;
   maxCarryover: number;
   ptoColor: string;
 }
 
-interface PTOTabProps {
-  settings: PTOSettings;
-  onSettingsChange: (settings: PTOSettings) => void;
-}
+const PTOTab: React.FC = () => {
+  const { plannerData, setPlannerData, isAuthenticated, getSettings, saveLocalSettings } = usePlanner();
+  const [isPending, startTransition] = useTransition();
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-const PTOTab: React.FC<PTOTabProps> = ({ settings, onSettingsChange }) => {
-  const [localSettings, setLocalSettings] = useState<PTOSettings>(settings);
+  // Initialize local settings from planner data or localStorage
+  const [localSettings, setLocalSettings] = useState<LocalPTOSettings>(() => {
+    const settings = getSettings();
+    return {
+      initialBalance: settings.initial_balance || 15,
+      asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
+      accrualFrequency: 'monthly',
+      accrualAmount: 1.25,
+      maxCarryover: settings.carry_over_limit || 5,
+      ptoColor: 'green-500',
+    };
+  });
+
+  // Update local settings when planner data changes
+  useEffect(() => {
+    const settings = getSettings();
+    if (settings) {
+      setLocalSettings({
+        initialBalance: settings.initial_balance || 15,
+        asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
+        accrualFrequency: 'monthly',
+        accrualAmount: 1.25,
+        maxCarryover: settings.carry_over_limit || 5,
+        ptoColor: 'green-500',
+      });
+    }
+  }, [plannerData?.settings, getSettings]);
 
   // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
+
     // Convert numeric fields to numbers
     let parsedValue: string | number = value;
     if (['initialBalance', 'accrualAmount', 'maxCarryover'].includes(name)) {
       parsedValue = parseFloat(value) || 0;
     }
-    
+
     setLocalSettings({
       ...localSettings,
       [name]: parsedValue
@@ -65,17 +92,101 @@ const PTOTab: React.FC<PTOTabProps> = ({ settings, onSettingsChange }) => {
     });
   };
 
-  // Save settings
-  const handleSave = () => {
-    onSettingsChange(localSettings);
-  };
+  // Save settings (to localStorage or database)
+  const handleSave = React.useCallback(async () => {
+    setSaveStatus('idle');
+
+    // If not authenticated, save to localStorage
+    if (!isAuthenticated) {
+      const settings = {
+        initial_balance: localSettings.initialBalance,
+        pto_start_date: localSettings.asOfDate,
+        carry_over_limit: localSettings.maxCarryover,
+        pto_display_unit: 'days' as const,
+        hours_per_day: 8,
+      };
+      saveLocalSettings(settings);
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      return;
+    }
+
+    // If authenticated, save to database
+    startTransition(async () => {
+      try {
+        // Save PTO settings
+        const settingsResult = await savePTOSettings({
+          pto_start_date: localSettings.asOfDate,
+          initial_balance: localSettings.initialBalance,
+          carry_over_limit: localSettings.maxCarryover,
+          max_balance: undefined,
+          renewal_date: undefined,
+          allow_negative_balance: false,
+          pto_display_unit: 'days',
+          hours_per_day: 8,
+        });
+
+        if (!settingsResult.success) {
+          console.error('Failed to save settings:', settingsResult.error);
+          setSaveStatus('error');
+          return;
+        }
+
+        // Create accrual rule
+        const accrualResult = await addAccrualRule({
+          name: `${localSettings.accrualFrequency} accrual`,
+          accrual_amount: localSettings.accrualAmount,
+          accrual_frequency: localSettings.accrualFrequency,
+          accrual_day: undefined,
+          effective_date: localSettings.asOfDate,
+          end_date: undefined,
+          is_active: true,
+        });
+
+        if (!accrualResult.success) {
+          console.error('Failed to save accrual rule:', accrualResult.error);
+          setSaveStatus('error');
+          return;
+        }
+
+        // Update context with new data
+        if (plannerData) {
+          setPlannerData({
+            ...plannerData,
+            settings: settingsResult.data,
+            accrualRules: [...plannerData.accrualRules, accrualResult.data],
+          });
+        }
+
+        setSaveStatus('success');
+
+        // Clear success message after 3 seconds
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      } catch (error) {
+        console.error('Error saving PTO settings:', error);
+        setSaveStatus('error');
+      }
+    });
+  }, [localSettings, isAuthenticated, plannerData, saveLocalSettings, setPlannerData, startTransition]);
+
+  // Auto-save after settings change (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      handleSave();
+    }, 500); // Auto-save 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [localSettings.initialBalance, localSettings.asOfDate, localSettings.maxCarryover, handleSave]);
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+      {/* PTO Balance Card */}
+      <PTOBalanceCard />
+
+      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 mt-6">
         Configure your PTO settings. This information will be used to calculate your available PTO.
       </p>
-      
+
       <div className="grid grid-cols-1 gap-4">
         {/* Initial Balance */}
         <div className="space-y-2">
@@ -177,11 +288,24 @@ const PTOTab: React.FC<PTOTabProps> = ({ settings, onSettingsChange }) => {
           </div>
         </div>
       </div>
-      
-      <div className="pt-4 mt-2">
-        <Button onClick={handleSave} className="w-full bg-rose-600 hover:bg-rose-700">
-          Save Settings
-        </Button>
+
+      {/* Auto-save status indicator */}
+      <div className="pt-4 mt-2 text-center">
+        {isPending && (
+          <p className="text-xs text-blue-600 dark:text-blue-400">
+            Saving changes...
+          </p>
+        )}
+        {saveStatus === 'success' && !isPending && (
+          <p className="text-xs text-green-600 dark:text-green-400">
+            ✓ Saved
+          </p>
+        )}
+        {saveStatus === 'error' && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            ✗ Failed to save. Changes will retry automatically.
+          </p>
+        )}
       </div>
     </div>
   );

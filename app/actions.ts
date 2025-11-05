@@ -4,6 +4,7 @@ import { encodedRedirect } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { initializeUserAccount } from "@/app/actions/user-actions";
 
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
@@ -19,7 +20,7 @@ export const signUpAction = async (formData: FormData) => {
     );
   }
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -30,13 +31,22 @@ export const signUpAction = async (formData: FormData) => {
   if (error) {
     console.error(error.code + " " + error.message);
     return encodedRedirect("error", "/sign-up", error.message);
-  } else {
-    return encodedRedirect(
-      "success",
-      "/sign-up",
-      "Thanks for signing up! Please check your email for a verification link.",
-    );
   }
+
+  // Initialize user account in database
+  if (data.user) {
+    const initResult = await initializeUserAccount(data.user.id, email);
+    if (!initResult.success) {
+      console.error("Failed to initialize user account:", initResult.error);
+      // Don't fail signup if initialization fails - user can set up later
+    }
+  }
+
+  return encodedRedirect(
+    "success",
+    "/sign-up",
+    "Thanks for signing up! Please check your email for a verification link.",
+  );
 };
 
 export const signInAction = async (formData: FormData) => {
@@ -53,7 +63,31 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", "/sign-in", error.message);
   }
 
-  return redirect("/protected");
+  return redirect("/dashboard");
+};
+
+export const signInWithMagicLinkAction = async (formData: FormData) => {
+  const email = formData.get("email")?.toString();
+  const supabase = await createClient();
+  const origin = (await headers()).get("origin");
+
+  if (!email) {
+    return { success: false, error: "Email is required" };
+  }
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: `${origin}/auth/callback?redirect_to=/dashboard`,
+    },
+  });
+
+  if (error) {
+    console.error("Magic link error:", error.message);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, message: "Check your email for a magic link!" };
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {

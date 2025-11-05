@@ -1,108 +1,160 @@
-# PTO Planner v3
+# PTO Planner v3 🏖️
 
-A modern, user-friendly application for tracking and managing Paid Time Off (PTO).
+A modern, user-friendly web application for tracking and optimizing your Paid Time Off (PTO) throughout the year. Built with Next.js, Supabase, and featuring a beautiful Ghibli-inspired UI.
 
-## Database Schema Setup
+## ✨ Features
 
-This application uses Supabase as the backend database service. Follow these steps to set up the database schema:
+- **Interactive Year Calendar** - Visualize your entire year at a glance
+- **Smart PTO Tracking** - Track PTO in days or hours with flexible accrual rules
+- **Optimization Strategies** - Get suggestions for long weekends, mini-breaks, or extended vacations
+- **Public Holidays** - Automatic integration of country-specific holidays
+- **Custom Weekends** - Configure which days count as your weekend
+- **Real-time Balance** - See your PTO balance update as you plan
+- **Magic Link Authentication** - Secure, passwordless login via email
 
-### 1. Create a Supabase Project
+## 🚀 Quick Start
 
-1. Go to [Supabase](https://supabase.com/) and sign up or log in.
-2. Create a new project with a name of your choice.
-3. Make note of your project URL and public anon key, which you'll need for the environment variables.
+Get up and running in 5 minutes:
 
-### 2. Set Up Environment Variables
+```bash
+# 1. Install dependencies
+npm install
 
-Create a `.env.local` file in the root directory of your project with the following variables:
+# 2. Set up Supabase (see SETUP.md for details)
+# - Create a Supabase project at https://supabase.com
+# - Copy your credentials to .env.local
+
+# 3. Apply database migrations
+# Via Supabase Dashboard or CLI (see SETUP.md)
+
+# 4. Start the dev server
+npm run dev
+```
+
+**📖 For complete setup instructions, see [SETUP.md](SETUP.md)**
+
+## 📋 Prerequisites
+
+- **Node.js** 18+ 
+- **npm** or **yarn**
+- **Supabase account** (free tier works great!)
+- **Docker** (optional, for local development)
+
+## 🔧 Environment Setup
+
+Create a `.env.local` file in the root directory:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+Get these values from your Supabase project dashboard → Settings → API.
+
+See [.env.example.md](.env.example.md) for more details.
+
+## 🗄️ Database Schema
+
+The application uses a comprehensive PostgreSQL schema with the following tables:
+
+- **users** - Extended user profiles (linked to Supabase Auth)
+- **pto_settings** - User-specific PTO configuration
+- **pto_accrual_rules** - Flexible PTO accrual rules (weekly, biweekly, monthly, yearly)
+- **pto_transactions** - Complete audit trail of PTO changes
+- **pto_days** - Individual PTO days with status tracking
+- **custom_holidays** - User-defined holidays
+- **weekend_config** - Customizable weekend days
+
+All tables include:
+- ✅ Row Level Security (RLS) policies
+- ✅ Automatic timestamps
+- ✅ Indexed foreign keys
+- ✅ Data validation triggers
+
+**📖 For detailed schema documentation, see [docs/database-schema.md](docs/database-schema.md)**
+
+## 📦 NPM Scripts
+
+### Development
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+```
+
+### Supabase Management
+```bash
+npm run supabase:start      # Start local Supabase (Docker)
+npm run supabase:stop       # Stop local Supabase
+npm run supabase:status     # Check Supabase status
+npm run supabase:link       # Link to cloud project
+npm run supabase:push       # Push migrations to cloud
+npm run supabase:types      # Generate TypeScript types
+```
+
+### Quick Setup
+```bash
+npm run setup:local   # Start + migrate + seed (local)
+```
+
+## 🏗️ Project Structure
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+pto-planner-v3/
+├── app/                    # Next.js app directory
+│   ├── (auth-pages)/      # Authentication pages
+│   ├── protected/         # Protected routes
+│   └── actions.ts         # Server actions
+├── components/            # React components
+│   ├── tabs/             # Island Bar tab components
+│   └── ui/               # Reusable UI components
+├── docs/                 # Documentation
+│   ├── PRD.md           # Product requirements
+│   └── database-schema.md
+├── supabase/
+│   ├── migrations/       # Database migrations
+│   ├── seed.sql         # Sample data
+│   └── config.toml      # Supabase configuration
+└── utils/
+    └── supabase/        # Supabase client utilities
 ```
 
-Replace `your_supabase_url` and `your_supabase_anon_key` with the values from your Supabase project settings.
+## 🎨 Tech Stack
 
-### 3. Apply Database Migrations
+- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
+- **Database**: [Supabase](https://supabase.com/) (PostgreSQL + Auth)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **UI Components**: [Radix UI](https://www.radix-ui.com/)
+- **Animations**: [Framer Motion](https://www.framer.com/motion/)
+- **TypeScript**: Full type safety
 
-There are two ways to set up the database schema:
+## 📚 Documentation
 
-#### Option 1: Using Supabase CLI (Recommended for Development)
+- **[SETUP.md](SETUP.md)** - Complete setup guide
+- **[docs/PRD.md](docs/PRD.md)** - Product requirements & features
+- **[docs/database-schema.md](docs/database-schema.md)** - Database schema details
+- **[.env.example.md](.env.example.md)** - Environment variables guide
 
-1. Install the Supabase CLI if you haven't already:
-   ```
-   npm install -g supabase
-   ```
+## 🔒 Security
 
-2. Login to Supabase:
-   ```
-   supabase login
-   ```
+- **Row Level Security (RLS)** - Users can only access their own data
+- **JWT Authentication** - Secure token-based auth via Supabase
+- **Magic Links** - Passwordless authentication
+- **Environment Variables** - Sensitive data never committed
 
-3. Link your project:
-   ```
-   supabase link --project-ref your-project-ref
-   ```
+## 🤝 Contributing
 
-4. Push the migrations to your Supabase project:
-   ```
-   supabase db push
-   ```
+This is a personal project, but suggestions and feedback are welcome!
 
-#### Option 2: Manual SQL Execution
+## 📄 License
 
-1. Go to the SQL Editor in your Supabase dashboard.
-2. Copy the contents of `supabase/migrations/20240101000000_initial_schema.sql`.
-3. Paste and execute the SQL in the Supabase SQL Editor.
-4. Optionally, also execute the `supabase/seed.sql` file to add test data.
+MIT License - feel free to use this project as you wish.
 
-### 4. Verify Setup
+## 🙏 Acknowledgments
 
-You should now have the following tables in your Supabase database:
-- users
-- pto_settings
-- pto_accrual_rules
-- pto_transactions
-- pto_days
-- custom_holidays
-- weekend_config
+- UI/UX inspired by Studio Ghibli aesthetics
+- Built with ❤️ using Next.js and Supabase
 
-## Database Schema Documentation
+---
 
-For detailed information about the database schema, see [Database Schema Documentation](docs/database-schema.md).
-
-## Development
-
-### Prerequisites
-
-- Node.js 16+ 
-- npm or yarn
-- Supabase account
-
-### Local Development
-
-1. Install dependencies:
-   ```
-   npm install
-   ```
-
-2. Run the development server:
-   ```
-   npm run dev
-   ```
-
-3. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## Database Schema Overview
-
-The PTO Planner uses the following tables:
-
-1. **users** - Extended user profiles linked to Supabase Auth
-2. **pto_settings** - User-specific PTO configuration
-3. **pto_accrual_rules** - Rules defining how PTO accrues
-4. **pto_transactions** - Record of all PTO balance changes
-5. **pto_days** - Individual PTO days requested by users
-6. **custom_holidays** - User-defined holidays
-7. **weekend_config** - Which days are considered weekends
-
-For a visual representation and detailed description, see the [database schema documentation](docs/database-schema.md).
+**Ready to start planning your PTO?** Follow the [SETUP.md](SETUP.md) guide and start optimizing your time off today! 🌴
