@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { addPTODay, deletePTODay } from '@/app/actions/pto-actions';
+import { formatDateLocal } from '@/lib/date-utils';
 
 // Day type enum
 export enum DayType {
@@ -125,7 +126,7 @@ const Calendar: React.FC = () => {
 
   // Handle day click with server action (if authenticated) or localStorage (if not)
   const handleDayClick = async (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatDateLocal(date);
 
     // Don't process if already processing this date
     if (processingDates.has(dateStr)) {

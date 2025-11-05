@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { PlannerData, PTODay, CustomHoliday, StrategyType, PTOSettings, WeekendConfig } from '@/types';
 import { optimizePTO, type PTOOptimizerConfig, type OptimizationResult } from '@/lib/pto-optimizer';
+import { formatDateLocal, parseDateLocal, isSameDay, matchesHoliday } from '@/lib/date-utils';
 
 // ============================================================================
 // LocalStorage Keys
@@ -126,7 +127,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Save selected days to localStorage when not authenticated
   useEffect(() => {
     if (!isAuthenticated && selectedDays.length >= 0) {
-      const dateStrings = selectedDays.map((date) => date.toISOString().split('T')[0]);
+      const dateStrings = selectedDays.map((date) => formatDateLocal(date));
       saveToLocalStorage(STORAGE_KEYS.SELECTED_DAYS, dateStrings);
     }
   }, [selectedDays, isAuthenticated]);
@@ -134,9 +135,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Helper: Check if date is selected
   const isDateSelected = useCallback(
     (date: Date): boolean => {
-      return selectedDays.some(
-        (d) => d.toISOString().split('T')[0] === date.toISOString().split('T')[0]
-      );
+      return selectedDays.some((d) => isSameDay(d, date));
     },
     [selectedDays]
   );
@@ -144,9 +143,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Helper: Check if date is suggested
   const isDateSuggested = useCallback(
     (date: Date): boolean => {
-      return suggestedDays.some(
-        (d) => d.toISOString().split('T')[0] === date.toISOString().split('T')[0]
-      );
+      return suggestedDays.some((d) => isSameDay(d, date));
     },
     [suggestedDays]
   );
@@ -161,19 +158,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
       if (!holidays.length) return false;
 
-      const dateStr = date.toISOString().split('T')[0];
-      return holidays.some((holiday) => {
-        if (holiday.repeats_yearly) {
-          // For repeating holidays, only check month and day
-          const holidayDate = new Date(holiday.date);
-          return (
-            holidayDate.getMonth() === date.getMonth() &&
-            holidayDate.getDate() === date.getDate()
-          );
-        }
-        // For non-repeating holidays, exact match
-        return holiday.date === dateStr;
-      });
+      return holidays.some((holiday) =>
+        matchesHoliday(date, holiday.date, holiday.repeats_yearly)
+      );
     },
     [plannerData]
   );
@@ -267,13 +254,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Action: Toggle day selection
   const toggleDaySelection = useCallback(
     (date: Date) => {
-      const dateStr = date.toISOString().split('T')[0];
       const isSelected = isDateSelected(date);
 
       if (isSelected) {
         // Remove from selection
         setSelectedDays((prev) =>
-          prev.filter((d) => d.toISOString().split('T')[0] !== dateStr)
+          prev.filter((d) => !isSameDay(d, date))
         );
       } else {
         // Add to selection
@@ -295,10 +281,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     setSelectedDays((prev) => {
       const combined = [...prev];
       suggestedDays.forEach((suggestedDate) => {
-        const dateStr = suggestedDate.toISOString().split('T')[0];
-        const alreadyExists = combined.some(
-          (d) => d.toISOString().split('T')[0] === dateStr
-        );
+        const alreadyExists = combined.some((d) => isSameDay(d, suggestedDate));
         if (!alreadyExists) {
           combined.push(suggestedDate);
         }
@@ -322,7 +305,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
       // Convert holidays to Date objects for the target year
       const holidayDates = holidays.map((holiday) => {
-        const holidayDate = new Date(holiday.date);
+        const holidayDate = parseDateLocal(holiday.date);
         if (holiday.repeats_yearly) {
           // For repeating holidays, use the target year
           return new Date(targetYear, holidayDate.getMonth(), holidayDate.getDate());
