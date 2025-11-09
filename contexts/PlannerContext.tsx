@@ -245,9 +245,9 @@ interface PlannerContextType {
 
   // State setters
   setPlannerData: (data: PlannerData | null) => void;
-  setSelectedDays: (days: Date[]) => void;
-  setSuggestedDays: (days: Date[]) => void;
-  setCurrentStrategy: (strategy: StrategyType | null) => void;
+  setSelectedDays: React.Dispatch<React.SetStateAction<Date[]>>;
+  setSuggestedDays: React.Dispatch<React.SetStateAction<Date[]>>;
+  setCurrentStrategy: React.Dispatch<React.SetStateAction<StrategyType | null>>;
   setCountryCode: (country: string) => void;
 
   // Helper methods
@@ -966,14 +966,6 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     },
     [getSettings, getWeekendDays, getHolidays, getCurrentBalance, selectedDays]
   );
-
-  useEffect(() => {
-    if (!currentStrategy) {
-      return;
-    }
-
-    runOptimization(currentStrategy);
-  }, [selectedDays, currentStrategy, runOptimization]);
 
   // Context value
   const value: PlannerContextType = {

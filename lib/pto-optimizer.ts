@@ -5,7 +5,7 @@
  * maximize their time off by strategically selecting days around weekends and holidays.
  */
 
-import { StrategyType } from '@/components/tabs/SuggestedPTOTab';
+import type { StrategyType } from '@/types';
 
 // ============================================================================
 // Types
@@ -513,15 +513,15 @@ export function optimizePTO(
   config: PTOOptimizerConfig
 ): OptimizationResult {
   switch (strategy) {
-    case StrategyType.BALANCED_MIX:
+    case 'balanced':
       return optimizeBalancedMix(config);
-    case StrategyType.LONG_WEEKENDS:
+    case 'long-weekends':
       return optimizeLongWeekends(config);
-    case StrategyType.MINI_BREAKS:
+    case 'mini-breaks':
       return optimizeMiniBreaks(config);
-    case StrategyType.WEEK_LONG:
+    case 'week-long':
       return optimizeWeekLong(config);
-    case StrategyType.EXTENDED:
+    case 'extended':
       return optimizeExtended(config);
     default:
       throw new Error(`Unknown strategy: ${strategy}`);
