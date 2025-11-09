@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Globe, RefreshCw, CheckCircle, Trash2 } from 'lucide-react';
+import { Globe, CheckCircle, Trash2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { usePlanner } from '@/contexts/PlannerContext';
-import { Badge } from '@/components/ui/badge';
 import { parseDateLocal } from '@/lib/date-utils';
 import type { CustomHoliday } from '@/types';
 
@@ -48,7 +47,6 @@ const HolidaysTab: React.FC = () => {
   const [selectedCountry, setSelectedCountry] = useState<string>(countryCode || 'US');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [customHolidayName, setCustomHolidayName] = useState('');
   const [customHolidayDate, setCustomHolidayDate] = useState('');
@@ -60,12 +58,6 @@ const HolidaysTab: React.FC = () => {
   useEffect(() => {
     setSelectedCountry(countryCode || 'US');
   }, [countryCode]);
-
-  useEffect(() => {
-    if (holidays.length > 0 && !lastUpdated) {
-      setLastUpdated('Auto loaded');
-    }
-  }, [holidays.length, lastUpdated]);
 
   useEffect(() => {
     if (!successMessage) {
@@ -90,9 +82,25 @@ const HolidaysTab: React.FC = () => {
     ];
   }, [selectedCountry]);
 
-  const handleCountryChange = (code: string) => {
+  const handleCountryChange = async (code: string) => {
     setSelectedCountry(code);
     setCountryCode(code);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    // Auto-load holidays for the new country
+    const result = await refreshHolidays(code, {
+      replaceExisting: true,
+      persistCountry: true,
+    });
+
+    if (!result.success) {
+      setErrorMessage(result.error || 'Failed to load holidays. Please try again.');
+      return;
+    }
+
+    const count = result.holidays?.length ?? 0;
+    setSuccessMessage(`Loaded ${count} holidays for ${result.countryCode}`);
   };
 
   const formatHolidayDate = (dateStr: string, repeatsYearly: boolean) => {
@@ -102,25 +110,6 @@ const HolidaysTab: React.FC = () => {
       day: 'numeric',
       ...(repeatsYearly ? {} : { year: 'numeric' }),
     });
-  };
-
-  const handleRefreshHolidays = async () => {
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    const result = await refreshHolidays(selectedCountry, {
-      replaceExisting: true,
-      persistCountry: true,
-    });
-
-    if (!result.success) {
-      setErrorMessage(result.error || 'Failed to refresh holidays. Please try again.');
-      return;
-    }
-
-    const count = result.holidays?.length ?? 0;
-    setSuccessMessage(`Loaded ${count} holidays for ${result.countryCode}`);
-    setLastUpdated(new Date().toLocaleString());
   };
 
   const handleRemoveHoliday = async (holiday: CustomHoliday) => {
@@ -142,7 +131,6 @@ const HolidaysTab: React.FC = () => {
     }
 
     setSuccessMessage(`Removed ${holiday.name}`);
-    setLastUpdated(new Date().toLocaleString());
   };
 
   const handleAddHoliday = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -178,23 +166,25 @@ const HolidaysTab: React.FC = () => {
     }
 
     setSuccessMessage(`Added ${trimmedName}`);
-    setLastUpdated(new Date().toLocaleString());
     setCustomHolidayName('');
     setCustomHolidayDate('');
     setCustomHolidayRepeats(true);
   };
 
-  const isRefreshing = isLoadingHolidays;
-  const lastUpdatedLabel = lastUpdated ?? (holidays.length > 0 ? 'Auto loaded' : 'Not yet loaded');
-
   return (
     <div className="space-y-3 text-slate-800 dark:text-slate-100">
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),auto] md:items-end">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {/* Country Selection */}
         <div className="space-y-1.5">
-          <Label htmlFor="country" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-            Country
-          </Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="country" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Country
+            </Label>
+            {isLoadingHolidays && (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Loading holidays...</span>
+            )}
+          </div>
           <div className="relative">
             <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-300" />
             <select
@@ -202,7 +192,7 @@ const HolidaysTab: React.FC = () => {
               value={selectedCountry}
               onChange={(event) => handleCountryChange(event.target.value)}
               className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-400"
-              disabled={isRefreshing}
+              disabled={isLoadingHolidays}
             >
               {availableCountries.map((country) => (
                 <option key={country.code} value={country.code} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
@@ -213,29 +203,52 @@ const HolidaysTab: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 md:items-end">
-          <Button
-            onClick={handleRefreshHolidays}
-            variant="outline"
-            className="w-full border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800 md:w-auto"
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                Loading holidays...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                {holidays.length > 0 ? 'Refresh Holidays' : 'Load Holidays'}
-              </>
-            )}
-          </Button>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 md:text-right">
-            Last updated: {lastUpdatedLabel}
-          </p>
-        </div>
+        {/* Add Custom Holiday Form */}
+        <form
+          onSubmit={handleAddHoliday}
+          className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+        >
+          <Label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            Add Custom Holiday
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="custom-holiday-name"
+              value={customHolidayName}
+              onChange={(event) => setCustomHolidayName(event.target.value)}
+              placeholder="Holiday name"
+              className="!h-8 flex-1 px-2 py-1 text-xs"
+            />
+            <Input
+              id="custom-holiday-date"
+              type="date"
+              value={customHolidayDate}
+              onChange={(event) => setCustomHolidayDate(event.target.value)}
+              className="!h-8 w-32 px-2 py-1 text-xs"
+            />
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="custom-holiday-repeats"
+                checked={customHolidayRepeats}
+                onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
+                className="border-slate-300 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 dark:border-slate-600"
+              />
+              <Label htmlFor="custom-holiday-repeats" className="text-xs text-slate-600 dark:text-slate-300">
+                Yearly
+              </Label>
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
+              }
+              className="h-8 bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+            >
+              {isAddingHoliday ? 'Adding…' : 'Add'}
+            </Button>
+          </div>
+        </form>
       </div>
 
       {successMessage && (
@@ -253,117 +266,61 @@ const HolidaysTab: React.FC = () => {
         </div>
       )}
 
-      <form
-        onSubmit={handleAddHoliday}
-        className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
-      >
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Add custom holiday</p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="custom-holiday-name" className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Holiday name
-            </Label>
-            <Input
-              id="custom-holiday-name"
-              value={customHolidayName}
-              onChange={(event) => setCustomHolidayName(event.target.value)}
-              placeholder="Company Founders Day"
-              className="!h-8 px-2 py-1 text-xs"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="custom-holiday-date" className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Date
-            </Label>
-            <Input
-              id="custom-holiday-date"
-              type="date"
-              value={customHolidayDate}
-              onChange={(event) => setCustomHolidayDate(event.target.value)}
-              className="!h-8 px-2 py-1 text-xs"
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="custom-holiday-repeats"
-            checked={customHolidayRepeats}
-            onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
-            className="border-slate-300 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 dark:border-slate-600"
-          />
-          <Label htmlFor="custom-holiday-repeats" className="text-xs text-slate-600 dark:text-slate-300">
-            Repeats every year
-          </Label>
-        </div>
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            disabled={
-              isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
-            }
-            className="bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-          >
-            {isAddingHoliday ? 'Adding…' : 'Add holiday'}
-          </Button>
-        </div>
-      </form>
-
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-300">
-          <span>{holidays.length} holidays loaded</span>
-          <span>{selectedCountry}</span>
+          <span>{holidays.length} holidays</span>
+          <span className="uppercase">{selectedCountry}</span>
         </div>
 
-        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
           {sortedHolidays.length === 0 ? (
-            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-900/30 dark:text-slate-300">
-              Holidays will appear here as soon as we finish loading them for your country.
+            <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+              {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
             </div>
           ) : (
-            sortedHolidays.map((holiday) => {
-              const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
-              const isRemoving = removingId === key;
+            <div className="divide-y divide-slate-200 dark:divide-slate-700">
+              {sortedHolidays.map((holiday, index) => {
+                const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
+                const isRemoving = removingId === key;
 
-              return (
-                <div
-                  key={key}
-                  className="flex items-start justify-between rounded-lg border border-slate-200 bg-white px-3 py-1.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/60"
-                >
-                  <div className="space-y-1">
-                    <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100">{holiday.name}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-300">
-                      {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
-                    </p>
-                    <div className="flex gap-2">
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-200 bg-emerald-50 text-[11px] text-emerald-700 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-300"
-                      >
-                        {holiday.repeats_yearly ? 'Repeats yearly' : 'One-time'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveHoliday(holiday)}
-                    disabled={isRemoving || isRefreshing}
-                    className="h-7 w-7 rounded-full text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-300 dark:hover:bg-rose-500/15 dark:hover:text-rose-200"
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+                      index % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50/50 dark:bg-slate-900/20'
+                    }`}
                   >
-                    <Trash2 className={`h-3.5 w-3.5 ${isRemoving ? 'animate-spin' : ''}`} />
-                  </Button>
-                </div>
-              );
-            })
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-100">{holiday.name}</span>
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                        {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
+                      </span>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        holiday.repeats_yearly
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
+                        {holiday.repeats_yearly ? 'Yearly' : 'Once'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveHoliday(holiday)}
+                      disabled={isRemoving || isLoadingHolidays}
+                      className="shrink-0 text-slate-400 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-rose-400"
+                      title="Delete holiday"
+                    >
+                      <Trash2 className={`h-3.5 w-3.5 ${isRemoving ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
 
       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-        Holidays are sourced from the Nager.Date public dataset. Refreshing will replace the current list for {new Date().getFullYear()}.
+        Official holidays are sourced from the Nager.Date public dataset. Changing your country will update the list for {new Date().getFullYear()}.
       </p>
     </div>
   );
