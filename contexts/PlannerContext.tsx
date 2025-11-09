@@ -318,6 +318,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   const [localHolidays, setLocalHolidays] = useState<CustomHoliday[]>(() =>
     loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, [])
   );
+  const [localWeekendDays, setLocalWeekendDays] = useState<number[]>(() =>
+    loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, [0, 6])
+  );
   const [isLoadingHolidays, setIsLoadingHolidays] = useState<boolean>(false);
 
   const isAuthenticated = !!plannerData?.user;
@@ -415,11 +418,10 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         );
       }
 
-      // Use localStorage for unauthenticated users
-      const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, [0, 6]);
-      return storedWeekend.includes(dayOfWeek);
+      // Use state for unauthenticated users
+      return localWeekendDays.includes(dayOfWeek);
     },
-    [plannerData]
+    [plannerData, localWeekendDays]
   );
 
   // Helper: Get weekend days as array
@@ -430,9 +432,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         .map((config) => config.day_of_week);
     }
 
-    // Fallback to localStorage
-    return loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, [0, 6]);
-  }, [plannerData]);
+    // Use state for unauthenticated users
+    return localWeekendDays;
+  }, [plannerData, localWeekendDays]);
 
   // Helper: Get current PTO balance
   const getCurrentBalance = useCallback((): number => {
@@ -557,8 +559,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     saveToLocalStorage(STORAGE_KEYS.SETTINGS, settings);
   }, []);
 
-  // Action: Save weekend config to localStorage
+  // Action: Save weekend config to localStorage and state
   const saveLocalWeekendConfig = useCallback((weekendDays: number[]) => {
+    setLocalWeekendDays(weekendDays);
     saveToLocalStorage(STORAGE_KEYS.WEEKEND_CONFIG, weekendDays);
   }, []);
 
