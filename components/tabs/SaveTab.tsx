@@ -5,6 +5,7 @@ import { Coffee, Mail, LogOut, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { ThemeSwitcher } from '@/components/theme-switcher';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { signInWithMagicLinkAction, signOutAction } from '@/app/actions';
 
@@ -55,114 +56,93 @@ const SaveTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {!isLoggedIn ? (
-        // Not logged in - show local storage info + signup option
-        <>
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md text-sm mb-4">
-            <p className="text-blue-800 dark:text-blue-300 font-semibold mb-2">
-              💾 Your data is saved locally
-            </p>
-            <p className="text-blue-700 dark:text-blue-400">
-              All your PTO plans, settings, and holidays are saved on this device.
-            </p>
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Stay in sync</h3>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">no passwords</span>
           </div>
-
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-              <strong>Create a free account</strong> to sync your PTO data across all your devices. When you sign in, all your local data will be automatically saved to your account. We'll send you a magic link - no password needed!
-            </p>
-
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your.email@example.com"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="pl-8"
-                    required
-                  />
-                </div>
+          <p className="text-xs text-slate-500 dark:text-slate-300">
+            Your plan is saved locally. Add an email to access it everywhere.
+          </p>
+          <form onSubmit={handleSignIn} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Email address
+              </Label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="!h-8 pl-8 pr-2 text-xs"
+                  required
+                />
               </div>
-
-              <Button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={isSigningIn}
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                {isSigningIn ? 'Sending magic link...' : 'Create Account & Sync Data'}
-              </Button>
-            </form>
-
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-md text-sm mt-4">
-                <p className="text-red-800 dark:text-red-300">
-                  ✗ {error}
-                </p>
-              </div>
-            )}
-
-            {showSuccess && (
-              <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-md text-sm mt-4">
-                <p className="text-green-800 dark:text-green-300 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Magic link sent! Check your email to complete signup and sync your data.</span>
-                </p>
-              </div>
-            )}
-          </div>
-        </>
-      ) : (
-        // Logged in - show account info
-        <>
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-md">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-              <p className="text-sm font-semibold text-green-800 dark:text-green-300">
-                You're signed in!
-              </p>
             </div>
-            <p className="text-sm text-green-700 dark:text-green-400">
-              Signed in as <strong>{email}</strong>
-            </p>
+            <Button type="submit" className="w-full bg-emerald-500 text-white hover:bg-emerald-600" size="sm" disabled={isSigningIn}>
+              <Mail className="mr-2 h-3.5 w-3.5" />
+              {isSigningIn ? 'Sending link…' : 'Send me a magic link'}
+            </Button>
+          </form>
+          {error && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:border-rose-900/60 dark:bg-rose-500/15 dark:text-rose-200">
+              ✗ {error}
+            </div>
+          )}
+          {showSuccess && (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-500/15 dark:text-emerald-200">
+              <CheckCircle className="h-3.5 w-3.5" />
+              Magic link on its way—check your email.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3 rounded-xl border border-emerald-300 bg-emerald-50/80 p-3 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-500/15">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+              <CheckCircle className="h-4 w-4" />
+              Synced account
+            </div>
+            <span className="text-xs text-emerald-600/80 dark:text-emerald-200/80">auto-save on</span>
           </div>
-
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md text-sm">
-            <p className="text-blue-800 dark:text-blue-300">
-              💾 Your PTO selections are automatically saved as you make changes.
-            </p>
-          </div>
-
-          <Button
-            variant="outline"
-            onClick={handleSignOut}
-            className="w-full border-gray-300 dark:border-gray-600"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
+          <p className="text-xs text-emerald-700/90 dark:text-emerald-100">
+            Signed in as <strong>{email}</strong>. Changes mirror across all devices instantly.
+          </p>
+          <Button variant="outline" onClick={handleSignOut} size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-200 dark:hover:bg-emerald-700/30">
+            <LogOut className="mr-2 h-3.5 w-3.5" />
             Sign out
           </Button>
-        </>
+        </div>
       )}
 
-      <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 text-center">
-          Enjoying PTO Planner? Support the project!
-        </p>
-        <a
-          href="https://www.buymeacoffee.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full p-3 rounded-md bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-800/50 text-amber-800 dark:text-amber-300 transition-colors"
-        >
-          <Coffee className="h-5 w-5" />
-          <span className="text-sm font-medium">Buy me a coffee ☕</span>
-        </a>
+      <div className="rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Display theme</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-300">Light, dark, or follow your system preference.</p>
+          </div>
+          <ThemeSwitcher />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-500/15 dark:text-amber-200">
+        <div className="flex items-center justify-between">
+          <span>Enjoying PTO Planner?</span>
+          <a
+            href="https://www.buymeacoffee.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-600"
+          >
+            <Coffee className="h-3.5 w-3.5" />
+            Support
+          </a>
+        </div>
       </div>
     </div>
   );
