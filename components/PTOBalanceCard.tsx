@@ -41,74 +41,74 @@ const PTOBalanceCard: React.FC = () => {
   const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
 
   return (
-    <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border border-gray-200 dark:border-gray-700 shadow-lg">
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+    <Card className="border border-gray-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-900/70">
+      <div className="p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
             PTO Balance
           </h3>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Initial Balance */}
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Initial Balance</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Initial Balance</span>
+            <span className="text-xs font-medium text-gray-900 dark:text-white">
               {initialBalance} {displayUnit}
             </span>
           </div>
 
           {/* Divider */}
-          <div className="border-t border-gray-200 dark:border-gray-700"></div>
+          <div className="border-t border-gray-200 dark:border-gray-700" />
 
           {/* Days Selected */}
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
               <TrendingDown className="h-3 w-3" />
               Days Selected
             </span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">
+            <span className="text-xs font-medium text-gray-900 dark:text-white">
               {daysSelected} {displayUnit}
             </span>
           </div>
 
           {/* Suggested Days (if any) */}
           {hasSuggestions && (
-            <div className="flex justify-between items-center bg-yellow-50 dark:bg-yellow-900/20 -mx-2 px-2 py-1 rounded">
-              <span className="text-sm text-yellow-700 dark:text-yellow-300 flex items-center gap-1">
+            <div className="-mx-1 flex items-center justify-between rounded bg-yellow-50 px-2 py-1 text-yellow-700 dark:bg-yellow-900/25 dark:text-yellow-300">
+              <span className="flex items-center gap-1 text-xs">
                 <TrendingUp className="h-3 w-3" />
                 Suggested Days
               </span>
-              <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+              <span className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
                 {suggestedCount} {displayUnit}
               </span>
             </div>
           )}
 
           {/* Divider */}
-          <div className="border-t border-gray-200 dark:border-gray-700"></div>
+          <div className="border-t border-gray-200 dark:border-gray-700" />
 
           {/* Remaining Balance */}
-          <div className="flex justify-between items-center pt-1">
-            <span className="text-base font-semibold text-gray-900 dark:text-white">
+          <div className="flex items-end justify-between pt-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Remaining
             </span>
-            <span className={`text-2xl font-bold ${getBalanceColor()}`}>
+            <span className={`text-lg font-bold ${getBalanceColor()}`}>
               {remainingBalance} {displayUnit}
             </span>
           </div>
 
           {/* Warning if overbooked */}
           {remainingBalance < 0 && (
-            <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded text-xs text-red-800 dark:text-red-300">
+            <div className="rounded bg-red-50 p-2 text-[11px] text-red-700 dark:bg-red-900/25 dark:text-red-300">
               ⚠️ You've selected more PTO than available
             </div>
           )}
 
           {/* Low balance warning */}
           {remainingBalance >= 0 && remainingBalance < initialBalance * 0.2 && (
-            <div className="bg-orange-50 dark:bg-orange-900/20 p-2 rounded text-xs text-orange-800 dark:text-orange-300">
+            <div className="rounded bg-orange-50 p-2 text-[11px] text-orange-700 dark:bg-orange-900/25 dark:text-orange-300">
               💡 You're running low on PTO
             </div>
           )}

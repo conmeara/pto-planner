@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import PTOBalanceCard from '@/components/PTOBalanceCard';
+import { cn } from '@/lib/utils';
 
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
@@ -179,133 +180,140 @@ const PTOTab: React.FC = () => {
   }, [localSettings.initialBalance, localSettings.asOfDate, localSettings.maxCarryover, handleSave]);
 
   return (
-    <div className="space-y-4">
-      {/* PTO Balance Card */}
-      <PTOBalanceCard />
-
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 mt-6">
-        Configure your PTO settings. This information will be used to calculate your available PTO.
-      </p>
-
-      <div className="grid grid-cols-1 gap-4">
-        {/* Initial Balance */}
-        <div className="space-y-2">
-          <Label htmlFor="initialBalance" className="text-sm font-medium">Initial PTO Balance (days)</Label>
-          <Input
-            id="initialBalance"
-            name="initialBalance"
-            type="number"
-            min="0"
-            step="0.5"
-            value={localSettings.initialBalance}
-            onChange={handleChange}
-          />
-        </div>
-        
-        {/* As-of Date */}
-        <div className="space-y-2">
-          <Label htmlFor="asOfDate" className="text-sm font-medium">As of Date</Label>
-          <div className="relative">
-            <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <Input
-              id="asOfDate"
-              name="asOfDate"
-              type="date"
-              value={localSettings.asOfDate}
-              onChange={handleChange}
-              className="pl-8"
-            />
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr),minmax(0,1fr)] md:items-start">
+        <div className="space-y-3 rounded-xl border border-slate-200/70 bg-white/80 p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60">
+          <div className="flex items-center justify-end">
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              {isPending ? (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300">Saving…</span>
+              ) : saveStatus === 'success' ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">Saved</span>
+              ) : saveStatus === 'error' ? (
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300">Will retry</span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Synced</span>
+              )}
+            </div>
           </div>
-        </div>
-        
-        {/* Accrual Frequency */}
-        <div className="space-y-2">
-          <Label htmlFor="accrualFrequency" className="text-sm font-medium">Accrual Frequency</Label>
-          <select
-            id="accrualFrequency"
-            name="accrualFrequency"
-            value={localSettings.accrualFrequency}
-            onChange={handleChange}
-            className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-          >
-            {ACCRUAL_FREQUENCIES.map((freq) => (
-              <option key={freq.value} value={freq.value}>
-                {freq.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        {/* Accrual Amount */}
-        <div className="space-y-2">
-          <Label htmlFor="accrualAmount" className="text-sm font-medium">
-            Accrual Amount (days per {localSettings.accrualFrequency})
-          </Label>
-          <Input
-            id="accrualAmount"
-            name="accrualAmount"
-            type="number"
-            min="0"
-            step="0.5"
-            value={localSettings.accrualAmount}
-            onChange={handleChange}
-          />
-        </div>
-        
-        {/* Max Carryover */}
-        <div className="space-y-2">
-          <Label htmlFor="maxCarryover" className="text-sm font-medium">Maximum PTO Carryover (days)</Label>
-          <Input
-            id="maxCarryover"
-            name="maxCarryover"
-            type="number"
-            min="0"
-            step="0.5"
-            value={localSettings.maxCarryover}
-            onChange={handleChange}
-          />
-        </div>
-        
-        {/* PTO Color */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-gray-500" />
-            <Label className="text-sm font-medium">PTO Color</Label>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {PTO_COLORS.map((color) => (
-              <button
-                key={color.value}
-                onClick={() => handleColorSelect(color.value)}
-                className={`w-8 h-8 rounded-full ${color.class} ${
-                  localSettings.ptoColor === color.value ? 'ring-2 ring-offset-2 ring-gray-400' : ''
-                }`}
-                title={color.label}
-                type="button"
-                aria-label={`Select ${color.label} color`}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Initial balance (days)
+              </Label>
+              <Input
+                id="initialBalance"
+                name="initialBalance"
+                type="number"
+                min="0"
+                step="0.5"
+                value={localSettings.initialBalance}
+                onChange={handleChange}
+                className="!h-8 px-2 py-1 text-xs"
               />
-            ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                As of date
+              </Label>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="asOfDate"
+                  name="asOfDate"
+                  type="date"
+                  value={localSettings.asOfDate}
+                  onChange={handleChange}
+                  className="!h-8 pl-8 pr-2 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Accrual frequency
+              </Label>
+              <select
+                id="accrualFrequency"
+                name="accrualFrequency"
+                value={localSettings.accrualFrequency}
+                onChange={handleChange}
+                className="w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-rose-500"
+              >
+                {ACCRUAL_FREQUENCIES.map((freq) => (
+                  <option key={freq.value} value={freq.value}>
+                    {freq.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Accrual amount
+              </Label>
+              <Input
+                id="accrualAmount"
+                name="accrualAmount"
+                type="number"
+                min="0"
+                step="0.5"
+                value={localSettings.accrualAmount}
+                onChange={handleChange}
+                className="!h-8 px-2 py-1 text-xs"
+              />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">Per {localSettings.accrualFrequency} period</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Max carryover (days)
+              </Label>
+              <Input
+                id="maxCarryover"
+                name="maxCarryover"
+                type="number"
+                min="0"
+                step="0.5"
+                value={localSettings.maxCarryover}
+                onChange={handleChange}
+                className="!h-8 px-2 py-1 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                <Palette className="h-3 w-3 text-slate-400" />
+                PTO color
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {PTO_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => handleColorSelect(color.value)}
+                    className={cn(
+                      'h-6 w-6 rounded-full border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-900',
+                      color.class,
+                      localSettings.ptoColor === color.value ? 'ring-2 ring-white ring-offset-2 dark:ring-slate-900' : ''
+                    )}
+                    title={color.label}
+                    type="button"
+                    aria-label={`Select ${color.label} color`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Auto-save status indicator */}
-      <div className="pt-4 mt-2 text-center">
-        {isPending && (
-          <p className="text-xs text-blue-600 dark:text-blue-400">
-            Saving changes...
-          </p>
-        )}
-        {saveStatus === 'success' && !isPending && (
-          <p className="text-xs text-green-600 dark:text-green-400">
-            ✓ Saved
-          </p>
-        )}
-        {saveStatus === 'error' && (
-          <p className="text-xs text-red-600 dark:text-red-400">
-            ✗ Failed to save. Changes will retry automatically.
-          </p>
-        )}
+        <div className="flex flex-col gap-3">
+          <PTOBalanceCard />
+          <div className="rounded-lg border border-slate-200/70 bg-white/90 p-2.5 text-[11px] text-slate-600 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
+            PTO totals update the moment you change a field. Your selections and accrual details sync automatically to your account or local device.
+          </div>
+        </div>
       </div>
     </div>
   );
