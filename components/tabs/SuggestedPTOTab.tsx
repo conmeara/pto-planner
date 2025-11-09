@@ -53,6 +53,8 @@ const SuggestedPTOTab: React.FC = () => {
   const {
     currentStrategy,
     suggestedDays,
+    selectedDays,
+    lastOptimizationResult,
     getCurrentBalance,
     runOptimization,
     applySuggestions,
@@ -61,29 +63,17 @@ const SuggestedPTOTab: React.FC = () => {
 
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [optimizationResult, setOptimizationResult] = useState<{
-    totalPTOUsed: number;
-    totalDaysOff: number;
-    efficiency: number;
-  } | null>(null);
 
-  const availablePTO = getCurrentBalance();
+  const initialPTO = getCurrentBalance();
+  const usedPTO = selectedDays.length;
+  const remainingPTO = Math.max(initialPTO - usedPTO, 0);
 
   // Handle strategy selection
   const handleSelectStrategy = async (strategyType: StrategyType) => {
     setIsOptimizing(true);
-    setOptimizationResult(null);
 
     try {
-      const result = runOptimization(strategyType);
-
-      if (result) {
-        setOptimizationResult({
-          totalPTOUsed: result.totalPTOUsed,
-          totalDaysOff: result.totalDaysOff,
-          efficiency: result.averageEfficiency,
-        });
-      }
+      runOptimization(strategyType);
     } catch (error) {
       console.error('Optimization error:', error);
     } finally {
@@ -98,7 +88,6 @@ const SuggestedPTOTab: React.FC = () => {
     setIsApplying(true);
     try {
       applySuggestions();
-      setOptimizationResult(null);
     } finally {
       setIsApplying(false);
     }
@@ -107,134 +96,127 @@ const SuggestedPTOTab: React.FC = () => {
   // Handle clearing suggestions
   const handleClear = () => {
     clearSuggestions();
-    setOptimizationResult(null);
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          Select a strategy to optimize your PTO usage.
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-slate-500 dark:text-slate-300">
+          Pick a strategy to let the optimizer fill in high-impact breaks automatically.
         </p>
-        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800">
-          {availablePTO} days available
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+          {remainingPTO} days free
         </Badge>
       </div>
 
-      {availablePTO <= 0 && (
-        <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-md text-sm">
-          <p className="text-orange-800 dark:text-orange-300">
-            ⚠️ No PTO days available. Please configure your PTO settings in the PTO tab.
-          </p>
+      {remainingPTO <= 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:border-rose-900/60 dark:bg-rose-500/15 dark:text-rose-200">
+          ⚠️ You're out of PTO days. Adjust your selections or settings to unlock new suggestions.
         </div>
       )}
 
-      <div className="space-y-3">
-        {STRATEGIES.map((strategy) => (
-          <div
-            key={strategy.type}
-            className={`p-3 rounded-lg cursor-pointer transition-all border ${
-              currentStrategy === strategy.type
-                ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-amber-200 dark:hover:border-amber-800'
-            }`}
-            onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`p-1 rounded ${
-                    currentStrategy === strategy.type
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300'
+      <div className="grid gap-2 sm:grid-cols-2">
+        {STRATEGIES.map((strategy) => {
+          const isActive = currentStrategy === strategy.type;
+          return (
+            <button
+              key={strategy.type}
+              type="button"
+              onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
+              className={`relative flex h-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                isActive
+                  ? 'border-amber-400 bg-amber-50 shadow-sm dark:border-amber-600 dark:bg-amber-500/15'
+                  : 'border-slate-200 bg-white hover:border-amber-200 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-amber-700'
+              } ${isOptimizing ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                    isActive ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200'
                   }`}
                 >
                   {strategy.icon}
-                </div>
-                <h3 className="text-sm font-semibold">{strategy.title}</h3>
+                </span>
+                {strategy.title}
               </div>
-              {currentStrategy === strategy.type && suggestedDays.length > 0 && (
-                <Badge className="bg-amber-500 text-white">
+              <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                {strategy.description}
+              </p>
+              {isActive && suggestedDays.length > 0 && (
+                <Badge className="w-fit border-amber-400 bg-amber-100 text-amber-700 dark:border-amber-600 dark:bg-amber-500/20 dark:text-amber-200">
                   {suggestedDays.length} days suggested
                 </Badge>
               )}
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-7">
-              {strategy.description}
-            </p>
-          </div>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {isOptimizing && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md text-sm flex items-center gap-2">
-          <BrainCircuit className="h-4 w-4 animate-spin text-blue-600" />
-          <p className="text-blue-800 dark:text-blue-300">
-            Analyzing calendar and optimizing...
-          </p>
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-500/10 dark:text-blue-200">
+          <BrainCircuit className="h-3.5 w-3.5 animate-spin" />
+          Crunching calendar data…
         </div>
       )}
 
-      {optimizationResult && currentStrategy && suggestedDays.length > 0 && (
-        <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-md">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-4 w-4 text-green-600 dark:text-green-400" />
-            <h4 className="text-sm font-semibold text-green-800 dark:text-green-300">
-              Optimization Results
-            </h4>
+      {lastOptimizationResult && currentStrategy && suggestedDays.length > 0 && (
+        <div className="grid gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-700 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-500/15 dark:text-emerald-200">
+          <div className="flex items-center gap-2 font-semibold">
+            <Sparkles className="h-3.5 w-3.5" />
+            Optimization preview
           </div>
-          <div className="space-y-1 text-xs text-green-700 dark:text-green-400">
-            <p>
-              <strong>PTO Days Used:</strong> {optimizationResult.totalPTOUsed} days
-            </p>
-            <p>
-              <strong>Total Days Off:</strong> {optimizationResult.totalDaysOff} days
-              (including weekends & holidays)
-            </p>
-            <p>
-              <strong>Efficiency:</strong> {optimizationResult.efficiency.toFixed(2)}x
-              <span className="text-xs ml-1">
-                ({optimizationResult.totalDaysOff} days off for {optimizationResult.totalPTOUsed}{' '}
-                PTO days)
-              </span>
-            </p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-emerald-500/80">Used</p>
+              <p className="text-sm font-semibold">{lastOptimizationResult.totalPTOUsed}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-emerald-500/80">Days off</p>
+              <p className="text-sm font-semibold">{lastOptimizationResult.totalDaysOff}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-emerald-500/80">Efficiency</p>
+              <p className="text-sm font-semibold">{lastOptimizationResult.averageEfficiency.toFixed(2)}x</p>
+            </div>
           </div>
         </div>
       )}
 
       {currentStrategy && suggestedDays.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-          <Button
-            onClick={handleApply}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-            disabled={isApplying}
-          >
-            {isApplying ? (
-              <>
-                <BrainCircuit className="mr-2 h-4 w-4 animate-spin" />
-                Applying strategy...
-              </>
-            ) : (
-              <>
-                <Check className="mr-2 h-4 w-4" />
-                Apply {suggestedDays.length} suggested days
-              </>
-            )}
-          </Button>
-
-          <Button
-            onClick={handleClear}
-            variant="outline"
-            className="w-full border-gray-300 dark:border-gray-600"
-            disabled={isApplying}
-          >
-            Clear suggestions
-          </Button>
-
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-            Suggested days will be shown in yellow on the calendar.
-            Click "Apply" to add them to your PTO plan.
-          </p>
+        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white/90 p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-300">
+            <span>Suggestions highlight in yellow—apply once they look right.</span>
+            <span className="font-medium text-slate-700 dark:text-slate-100">{suggestedDays.length} total days</span>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              onClick={handleApply}
+              className="flex-1 bg-amber-500 text-white hover:bg-amber-600"
+              size="sm"
+              disabled={isApplying}
+            >
+              {isApplying ? (
+                <>
+                  <BrainCircuit className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Applying…
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-3.5 w-3.5" />
+                  Apply plan
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleClear}
+              variant="outline"
+              size="sm"
+              className="flex-1 border-slate-300 dark:border-slate-600"
+              disabled={isApplying}
+            >
+              Clear
+            </Button>
+          </div>
         </div>
       )}
     </div>
