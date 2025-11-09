@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from 'react';
-import { Calendar, Palette } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
@@ -16,23 +16,12 @@ const ACCRUAL_FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' }
 ];
 
-// PTO color options (note: color is currently not stored in DB, for future use)
-const PTO_COLORS = [
-  { value: 'green-500', label: 'Green', class: 'bg-green-500' },
-  { value: 'blue-500', label: 'Blue', class: 'bg-blue-500' },
-  { value: 'purple-500', label: 'Purple', class: 'bg-purple-500' },
-  { value: 'rose-500', label: 'Rose', class: 'bg-rose-500' },
-  { value: 'amber-500', label: 'Amber', class: 'bg-amber-500' },
-  { value: 'emerald-500', label: 'Emerald', class: 'bg-emerald-500' },
-];
-
 interface LocalPTOSettings {
   initialBalance: number;
   asOfDate: string;
   accrualFrequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   accrualAmount: number;
   maxCarryover: number;
-  ptoColor: string;
 }
 
 const PTOTab: React.FC = () => {
@@ -49,7 +38,6 @@ const PTOTab: React.FC = () => {
       accrualFrequency: 'monthly',
       accrualAmount: 1.25,
       maxCarryover: settings.carry_over_limit || 5,
-      ptoColor: 'green-500',
     };
   });
 
@@ -63,7 +51,6 @@ const PTOTab: React.FC = () => {
         accrualFrequency: 'monthly',
         accrualAmount: 1.25,
         maxCarryover: settings.carry_over_limit || 5,
-        ptoColor: 'green-500',
       });
     }
   }, [plannerData?.settings, getSettings]);
@@ -81,14 +68,6 @@ const PTOTab: React.FC = () => {
     setLocalSettings({
       ...localSettings,
       [name]: parsedValue
-    });
-  };
-
-  // Handle color selection
-  const handleColorSelect = (color: string) => {
-    setLocalSettings({
-      ...localSettings,
-      ptoColor: color
     });
   };
 
@@ -264,28 +243,6 @@ const PTOTab: React.FC = () => {
             value={localSettings.maxCarryover}
             onChange={handleChange}
           />
-        </div>
-        
-        {/* PTO Color */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-gray-500" />
-            <Label className="text-sm font-medium">PTO Color</Label>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {PTO_COLORS.map((color) => (
-              <button
-                key={color.value}
-                onClick={() => handleColorSelect(color.value)}
-                className={`w-8 h-8 rounded-full ${color.class} ${
-                  localSettings.ptoColor === color.value ? 'ring-2 ring-offset-2 ring-gray-400' : ''
-                }`}
-                title={color.label}
-                type="button"
-                aria-label={`Select ${color.label} color`}
-              />
-            ))}
-          </div>
         </div>
       </div>
 
