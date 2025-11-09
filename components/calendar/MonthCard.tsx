@@ -69,16 +69,21 @@ const isToday = (date: Date) => {
 
 const getDayClasses = (type: DayType) => {
   const baseClasses =
-    'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full cursor-pointer text-xs';
+    'flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-xs font-medium transition-colors duration-150 md:h-10 md:w-10';
 
   const typeClasses = {
-    [DayType.NORMAL]: 'hover:bg-gray-200 dark:hover:bg-gray-700',
-    [DayType.WEEKEND]: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-    [DayType.PUBLIC_HOLIDAY]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    [DayType.SELECTED_PTO]: 'bg-green-500 text-white',
+    [DayType.NORMAL]:
+      'text-[hsl(var(--ghibli-forest) / 0.75)] hover:bg-[hsl(var(--primary) / 0.12)] hover:text-[hsl(var(--ghibli-forest))]',
+    [DayType.WEEKEND]:
+      'bg-[hsl(var(--muted) / 0.75)] text-[hsl(var(--muted-foreground))]',
+    [DayType.PUBLIC_HOLIDAY]:
+      'bg-[hsl(var(--primary) / 0.18)] text-[hsl(var(--primary) / 0.75)]',
+    [DayType.SELECTED_PTO]:
+      'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]',
     [DayType.SUGGESTED_PTO]:
-      'bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200',
-    [DayType.TODAY]: 'ring-2 ring-blue-500 font-bold',
+      'bg-[hsl(var(--accent) / 0.9)] text-[hsl(var(--accent-foreground))]',
+    [DayType.TODAY]:
+      'ring-2 ring-[hsl(var(--primary))] ring-offset-2 ring-offset-[hsl(var(--card) / 0.9)] text-[hsl(var(--foreground))] font-semibold bg-[hsl(var(--primary) / 0.15)]',
   } satisfies Record<DayType, string>;
 
   return cn(baseClasses, typeClasses[type]);
@@ -136,17 +141,17 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
   const badgeClass =
     balanceAtStart < 0
-      ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-200'
+      ? 'bg-[hsl(var(--destructive) / 0.15)] text-[hsl(var(--destructive) / 0.85)]'
       : balanceAtStart === 0
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200'
-      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200';
+      ? 'bg-[hsl(var(--accent) / 0.24)] text-[hsl(var(--accent-foreground))]'
+      : 'bg-[hsl(var(--secondary) / 0.22)] text-[hsl(var(--secondary-foreground))]';
 
   const progressColor =
     progressPercent <= 20
-      ? 'bg-red-500/80 dark:bg-red-400/80'
+      ? 'bg-[hsl(var(--destructive))]'
       : progressPercent <= 50
-      ? 'bg-amber-500/80 dark:bg-amber-400/80'
-      : 'bg-emerald-500/80 dark:bg-emerald-400/80';
+      ? 'bg-[hsl(var(--accent))]'
+      : 'bg-[hsl(var(--secondary))]';
 
   const monthTooltip = useMemo(() => {
     const lines = [
@@ -267,22 +272,27 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
   ]);
 
   return (
-    <div className={cn('mb-6', className)}>
+    <div
+      className={cn(
+        'mb-6 rounded-2xl border border-[hsl(var(--border) / 0.7)] bg-[linear-gradient(155deg,hsl(var(--card) / 0.96)_0%,hsl(var(--ghibli-haze) / 0.85)_100%)] p-4 shadow-[0_20px_60px_-40px_rgba(42,88,80,0.55)] backdrop-blur-sm',
+        className,
+      )}
+    >
       <div className="mb-3" title={monthTooltip}>
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold">{MONTH_NAMES[monthIndex]}</h3>
+          <h3 className="font-semibold text-[hsl(var(--ghibli-forest))]">{MONTH_NAMES[monthIndex]}</h3>
           <span
             className={cn(
-              'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+              'rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-[0_6px_18px_-14px_rgba(42,88,80,0.6)]',
               badgeClass,
             )}
           >
             {formatAmount(balanceAtStart)} {unitLabel}
           </span>
         </div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800/70">
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--muted) / 0.55)]">
           <div
-            className={cn('h-full rounded-full transition-all', progressColor)}
+            className={cn('h-full rounded-full transition-all duration-300 ease-out', progressColor)}
             style={{ width: `${progressPercent}%` }}
             aria-hidden="true"
           />
@@ -293,11 +303,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
           )} ${unitLabel} of ${formatAmount(totalCapacity)} ${unitLabel}`}
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1.5">
         {DAYS_OF_WEEK.map((dayLabel) => (
           <div
             key={dayLabel}
-            className="text-xs text-center font-medium text-gray-500"
+            className="text-center text-xs font-medium uppercase tracking-wide text-[hsl(var(--ghibli-forest) / 0.5)]"
           >
             {dayLabel}
           </div>

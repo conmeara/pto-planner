@@ -55,28 +55,36 @@ const SaveTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 text-[hsl(var(--ghibli-forest))]">
       {!isLoggedIn ? (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+        <div className="space-y-3 rounded-3xl border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card) / 0.78)] p-4 shadow-[0_36px_90px_-48px_rgba(38,73,70,0.55)] backdrop-blur-sm">
           <form onSubmit={handleSignIn} className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="email"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 Email address
               </Label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                  <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[hsl(var(--primary) / 0.5)]" />
                   <Input
                     id="email"
                     type="email"
                     placeholder="you@example.com"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
-                    className="!h-8 pl-8 pr-2 text-xs"
+                    className="!h-8 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] pl-8 pr-2 text-xs shadow-[0_18px_40px_-30px_rgba(38,73,70,0.45)]"
                     required
                   />
                 </div>
-                <Button type="submit" className="bg-emerald-500 text-white hover:bg-emerald-600 min-w-24" size="sm" disabled={isSigningIn}>
+                <Button
+                  type="submit"
+                  className="min-w-24 rounded-full bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] shadow-[0_18px_40px_-30px_rgba(68,118,102,0.55)] hover:bg-[hsl(var(--secondary) / 0.9)]"
+                  size="sm"
+                  disabled={isSigningIn}
+                >
                   <CheckCircle className="mr-2 h-3.5 w-3.5" />
                   {isSigningIn ? 'Saving…' : 'Save'}
                 </Button>
@@ -84,37 +92,42 @@ const SaveTab: React.FC = () => {
             </div>
           </form>
           {error && (
-            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:border-rose-900/60 dark:bg-rose-500/15 dark:text-rose-200">
+            <div className="rounded-2xl border border-[hsl(var(--destructive) / 0.4)] bg-[hsl(var(--destructive) / 0.16)] px-3 py-1.5 text-xs text-[hsl(var(--destructive))] shadow-[0_18px_40px_-30px_rgba(199,109,94,0.45)]">
               ✗ {error}
             </div>
           )}
           {showSuccess && (
-            <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-500/15 dark:text-emerald-200">
+            <div className="flex items-center gap-2 rounded-2xl border border-[hsl(var(--secondary) / 0.4)] bg-[hsl(var(--secondary) / 0.2)] px-3 py-1.5 text-xs text-[hsl(var(--secondary-foreground))] shadow-[0_18px_40px_-30px_rgba(68,118,102,0.45)]">
               <CheckCircle className="h-3.5 w-3.5" />
               Magic link on its way—check your email.
             </div>
           )}
         </div>
       ) : (
-        <div className="space-y-3 rounded-xl border border-emerald-300 bg-emerald-50/80 p-3 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-500/15">
+        <div className="space-y-3 rounded-3xl border border-[hsl(var(--secondary) / 0.5)] bg-[hsl(var(--secondary) / 0.22)] p-4 shadow-[0_32px_80px_-48px_rgba(68,118,102,0.55)] backdrop-blur-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--secondary-foreground))]">
               <CheckCircle className="h-4 w-4" />
               Synced account
             </div>
-            <span className="text-xs text-emerald-600/80 dark:text-emerald-200/80">auto-save on</span>
+            <span className="text-xs text-[hsl(var(--secondary-foreground) / 0.7)]">auto-save on</span>
           </div>
-          <p className="text-xs text-emerald-700/90 dark:text-emerald-100">
+          <p className="text-xs text-[hsl(var(--secondary-foreground) / 0.85)]">
             Signed in as <strong>{email}</strong>. Changes mirror across all devices instantly.
           </p>
-          <Button variant="outline" onClick={handleSignOut} size="sm" className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-200 dark:hover:bg-emerald-700/30">
+          <Button
+            variant="outline"
+            onClick={handleSignOut}
+            size="sm"
+            className="border-[hsl(var(--secondary) / 0.45)] text-[hsl(var(--secondary-foreground))] hover:bg-[hsl(var(--secondary) / 0.2)]"
+          >
             <LogOut className="mr-2 h-3.5 w-3.5" />
             Sign out
           </Button>
         </div>
       )}
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-500/15 dark:text-amber-200">
+      <div className="rounded-3xl border border-[hsl(var(--accent) / 0.45)] bg-[hsl(var(--accent) / 0.22)] px-3 py-2.5 text-xs text-[hsl(var(--accent-foreground))] shadow-[0_32px_80px_-48px_rgba(189,169,90,0.45)] backdrop-blur-sm">
         <div className="space-y-2">
           <span className="block">Enjoying PTO Planner?</span>
           <div className="flex gap-2">
@@ -122,7 +135,7 @@ const SaveTab: React.FC = () => {
               href="https://www.buymeacoffee.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-600"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[hsl(var(--accent))] px-3 py-1 text-[11px] font-medium text-[hsl(var(--accent-foreground))] shadow-[0_16px_36px_-28px_rgba(189,169,90,0.55)] hover:bg-[hsl(var(--accent) / 0.9)]"
             >
               <Coffee className="h-3.5 w-3.5" />
               Support
@@ -131,7 +144,7 @@ const SaveTab: React.FC = () => {
               href="https://github.com/conmeara/pto-planner-v3"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-[hsl(var(--primary) / 0.8)] px-3 py-1 text-[11px] font-medium text-[hsl(var(--primary-foreground))] shadow-[0_16px_36px_-28px_rgba(70,118,135,0.45)] hover:bg-[hsl(var(--primary) / 0.9)]"
             >
               <Github className="h-3.5 w-3.5" />
               GitHub
