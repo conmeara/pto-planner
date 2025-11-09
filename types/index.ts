@@ -23,6 +23,7 @@ export interface PTOSettings {
   allow_negative_balance: boolean;
   pto_display_unit: 'days' | 'hours';
   hours_per_day: number;
+  hours_per_week: number;
   created_at: string;
   updated_at: string;
 }
@@ -133,6 +134,7 @@ export const PTOSettingsSchema = z.object({
   allow_negative_balance: z.boolean().default(false),
   pto_display_unit: z.enum(['days', 'hours']).default('days'),
   hours_per_day: z.number().positive().max(24).default(8),
+  hours_per_week: z.number().positive().max(168).default(40),
 });
 
 export const PTOAccrualRuleSchema = z.object({

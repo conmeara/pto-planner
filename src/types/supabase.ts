@@ -52,6 +52,7 @@ export interface Database {
           allow_negative_balance: boolean
           pto_display_unit: string
           hours_per_day: number
+          hours_per_week: number
           created_at: string
           updated_at: string
         }
@@ -66,6 +67,7 @@ export interface Database {
           allow_negative_balance?: boolean
           pto_display_unit?: string
           hours_per_day?: number
+          hours_per_week?: number
           created_at?: string
           updated_at?: string
         }
@@ -80,6 +82,7 @@ export interface Database {
           allow_negative_balance?: boolean
           pto_display_unit?: string
           hours_per_day?: number
+          hours_per_week?: number
           created_at?: string
           updated_at?: string
         }

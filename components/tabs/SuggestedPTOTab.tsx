@@ -17,31 +17,31 @@ const STRATEGIES: Array<{
     type: 'balanced',
     title: 'Balanced Mix',
     description: 'Combination of short breaks and longer vacations throughout the year',
-    icon: <Star className="h-4 w-4" />
+    icon: <Star className="h-3.5 w-3.5" />
   },
   {
     type: 'long-weekends',
     title: 'Long Weekends',
     description: 'Multiple 3-4 day breaks throughout the year, typically extending weekends',
-    icon: <Star className="h-4 w-4" />
+    icon: <Star className="h-3.5 w-3.5" />
   },
   {
     type: 'mini-breaks',
     title: 'Mini Breaks',
     description: 'Several 5-6 day breaks spread across the year',
-    icon: <Star className="h-4 w-4" />
+    icon: <Star className="h-3.5 w-3.5" />
   },
   {
     type: 'week-long',
     title: 'Week-Long Breaks',
     description: '7-9 day getaways, ideal for proper vacations',
-    icon: <Star className="h-4 w-4" />
+    icon: <Star className="h-3.5 w-3.5" />
   },
   {
     type: 'extended',
     title: 'Extended Vacations',
     description: '10-15 day breaks for deeper relaxation, fewer times per year',
-    icon: <Star className="h-4 w-4" />
+    icon: <Star className="h-3.5 w-3.5" />
   }
 ];
 
@@ -128,21 +128,21 @@ const SuggestedPTOTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {STRATEGIES.map((strategy) => (
           <div
             key={strategy.type}
-            className={`p-3 rounded-lg cursor-pointer transition-all border ${
+            className={`p-2 rounded-lg cursor-pointer transition-all border ${
               currentStrategy === strategy.type
                 ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 ring-2 ring-amber-400 dark:ring-amber-600'
                 : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-amber-200 dark:hover:border-amber-800'
             }`}
             onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
           >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <div
-                  className={`p-1 rounded ${
+                  className={`p-0.5 rounded ${
                     currentStrategy === strategy.type
                       ? 'bg-amber-500 text-white'
                       : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300'
@@ -150,16 +150,14 @@ const SuggestedPTOTab: React.FC = () => {
                 >
                   {strategy.icon}
                 </div>
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">{strategy.title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{strategy.description}</p>
-                </div>
+                <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">{strategy.title}</h3>
+                {currentStrategy === strategy.type && suggestedDays.length > 0 && (
+                  <Badge className="bg-amber-500 text-white text-xs ml-auto">
+                    {suggestedDays.length}
+                  </Badge>
+                )}
               </div>
-              {currentStrategy === strategy.type && suggestedDays.length > 0 && (
-                <Badge className="bg-amber-500 text-white">
-                  {suggestedDays.length} suggested
-                </Badge>
-              )}
+              <p className="text-xs text-gray-600 dark:text-gray-400 leading-tight">{strategy.description}</p>
             </div>
           </div>
         ))}

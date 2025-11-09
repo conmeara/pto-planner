@@ -26,6 +26,7 @@ pto_settings
 | allow_negative_balance|
 | pto_display_unit     |
 | hours_per_day        |
+| hours_per_week       |
 | created_at           |
 | updated_at           |
 +----------------------+
@@ -85,6 +86,7 @@ Stores PTO configuration settings for each user.
 - **allow_negative_balance**: Whether negative PTO balance is allowed
 - **pto_display_unit**: Unit for displaying PTO ('days' or 'hours')
 - **hours_per_day**: Number of work hours in a standard day
+- **hours_per_week**: Number of hours the user works across a typical week
 
 ### pto_accrual_rules
 Defines how PTO accrues over time for a user.

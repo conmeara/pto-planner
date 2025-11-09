@@ -175,6 +175,7 @@ export async function migrateLocalDataToDatabase(localData: {
     carry_over_limit?: number;
     pto_display_unit?: 'days' | 'hours';
     hours_per_day?: number;
+    hours_per_week?: number;
   };
   holidays?: Array<{
     name: string;
@@ -215,6 +216,7 @@ export async function migrateLocalDataToDatabase(localData: {
             carry_over_limit: localData.settings.carry_over_limit ?? 5,
             pto_display_unit: localData.settings.pto_display_unit || 'days',
             hours_per_day: localData.settings.hours_per_day || 8,
+            hours_per_week: localData.settings.hours_per_week || 40,
             allow_negative_balance: false,
           });
 
