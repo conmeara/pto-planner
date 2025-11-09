@@ -598,27 +598,51 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         return 0;
       }
 
-      const initialBalance = typeof settings.initial_balance === 'number' ? settings.initial_balance : 0;
-      const accrued = getAccruedAmountUntil(target);
-      const used = getUsedAmountBefore(target);
+    const initialBalance = typeof settings.initial_balance === 'number' ? settings.initial_balance : 0;
+    const accrued = getAccruedAmountUntil(target);
+    const used = getUsedAmountBefore(target);
 
-      let balance = initialBalance + accrued - used;
+    const carryOverLimit =
+      typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0
+        ? settings.carry_over_limit
+        : null;
 
-      const caps: number[] = [];
+    const renewalDate = settings.renewal_date ? startOfDay(parseDateLocal(settings.renewal_date)) : null;
 
-      if (typeof settings.max_balance === 'number') {
-        caps.push(settings.max_balance);
+    let carryoverAdjustments = 0;
+
+    if (carryOverLimit !== null && renewalDate) {
+      const normalizedLimit = Math.max(carryOverLimit, 0);
+      const resetDates: Date[] = [];
+      let candidate = startOfDay(new Date(renewalDate));
+
+      while (candidate <= target) {
+        if (!startDate || candidate > startDate) {
+          resetDates.push(candidate);
+        }
+        candidate = startOfDay(new Date(candidate.getFullYear() + 1, renewalDate.getMonth(), renewalDate.getDate()));
       }
 
-      if (typeof settings.carry_over_limit === 'number') {
-        caps.push(initialBalance + settings.carry_over_limit);
-      }
+      for (const resetDate of resetDates) {
+        const accruedUntilReset = getAccruedAmountUntil(resetDate);
+        const usedBeforeReset = getUsedAmountBefore(resetDate);
 
-      if (caps.length) {
-        balance = Math.min(balance, Math.min(...caps));
-      }
+        const balanceBeforeReset = initialBalance + accruedUntilReset - usedBeforeReset - carryoverAdjustments;
+        const allowedCarryover = Math.min(normalizedLimit, Math.max(balanceBeforeReset, 0));
 
-      return balance;
+        if (balanceBeforeReset > allowedCarryover) {
+          carryoverAdjustments += balanceBeforeReset - allowedCarryover;
+        }
+      }
+    }
+
+    let balance = initialBalance + accrued - used - carryoverAdjustments;
+
+    if (typeof settings.max_balance === 'number') {
+      balance = Math.min(balance, settings.max_balance);
+    }
+
+    return balance;
     },
     [getSettings, getAccruedAmountUntil, getUsedAmountBefore]
   );
