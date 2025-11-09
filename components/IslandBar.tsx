@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserRound, X, type LucideIcon } from 'lucide-react';
+import { X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Tab components
@@ -11,6 +11,7 @@ import SuggestedPTOTab from './tabs/SuggestedPTOTab';
 import HolidaysTab from './tabs/HolidaysTab';
 import WeekendTab from './tabs/WeekendTab';
 import SaveTab from './tabs/SaveTab';
+import { ThemeSwitcher } from './theme-switcher';
 
 // Tab types
 export enum TabType {
@@ -67,10 +68,9 @@ const TABS: TabConfig[] = [
   },
   {
     type: TabType.SAVE,
-    icon: UserRound,
     label: 'Save',
     panelTitle: 'Save & Sync',
-    panelDescription: 'Sign in to sync across devices and keep changes in step automatically.',
+    panelDescription: 'Sign in to sync across devices',
   },
 ];
 
@@ -94,7 +94,6 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   };
 
   const activeTabConfig = TABS.find((tab) => tab.type === activeTab);
-  const ActiveIcon = activeTabConfig?.icon;
 
   const renderActiveTabContent = () => {
     switch (activeTab) {
@@ -180,16 +179,11 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
             transition={{ duration: 0.18, ease: 'easeOut' }}
             className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-4 text-slate-900 shadow-md dark:border-slate-700/60 dark:bg-slate-950/85 dark:text-slate-100 sm:px-6"
           >
-            <div className="flex flex-wrap items-start gap-3">
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  {ActiveIcon && (
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/90 text-white dark:bg-white/90 dark:text-slate-900">
-                      <ActiveIcon className="h-4 w-4" />
-                    </span>
-                  )}
-                  <span className="truncate">{activeTabConfig.panelTitle}</span>
-                </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {activeTabConfig.panelTitle}
+                </span>
                 {activeTabConfig.panelDescription && (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {activeTabConfig.panelDescription}
@@ -197,14 +191,17 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab(TabType.NONE)}
-                className="ml-auto rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-white"
-                aria-label="Close panel"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {activeTab === TabType.SAVE && <ThemeSwitcher />}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(TabType.NONE)}
+                  className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-white"
+                  aria-label="Close panel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="mt-4">

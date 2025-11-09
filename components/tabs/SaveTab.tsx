@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Coffee, Mail, LogOut, CheckCircle } from 'lucide-react';
+import { Coffee, Mail, LogOut, CheckCircle, Github } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { signInWithMagicLinkAction, signOutAction } from '@/app/actions';
 
@@ -59,35 +58,30 @@ const SaveTab: React.FC = () => {
     <div className="space-y-3">
       {!isLoggedIn ? (
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Stay in sync</h3>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500">no passwords</span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-300">
-            Your plan is saved locally. Add an email to access it everywhere.
-          </p>
           <form onSubmit={handleSignIn} className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
                 Email address
               </Label>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  className="!h-8 pl-8 pr-2 text-xs"
-                  required
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className="!h-8 pl-8 pr-2 text-xs"
+                    required
+                  />
+                </div>
+                <Button type="submit" className="bg-emerald-500 text-white hover:bg-emerald-600 min-w-24" size="sm" disabled={isSigningIn}>
+                  <CheckCircle className="mr-2 h-3.5 w-3.5" />
+                  {isSigningIn ? 'Saving…' : 'Save'}
+                </Button>
               </div>
             </div>
-            <Button type="submit" className="w-full bg-emerald-500 text-white hover:bg-emerald-600" size="sm" disabled={isSigningIn}>
-              <Mail className="mr-2 h-3.5 w-3.5" />
-              {isSigningIn ? 'Sending link…' : 'Send me a magic link'}
-            </Button>
           </form>
           {error && (
             <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:border-rose-900/60 dark:bg-rose-500/15 dark:text-rose-200">
@@ -120,28 +114,29 @@ const SaveTab: React.FC = () => {
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Display theme</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-300">Light, dark, or follow your system preference.</p>
-          </div>
-          <ThemeSwitcher />
-        </div>
-      </div>
-
       <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-500/15 dark:text-amber-200">
-        <div className="flex items-center justify-between">
-          <span>Enjoying PTO Planner?</span>
-          <a
-            href="https://www.buymeacoffee.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-600"
-          >
-            <Coffee className="h-3.5 w-3.5" />
-            Support
-          </a>
+        <div className="space-y-2">
+          <span className="block">Enjoying PTO Planner?</span>
+          <div className="flex gap-2">
+            <a
+              href="https://www.buymeacoffee.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-[11px] font-medium text-white hover:bg-amber-600"
+            >
+              <Coffee className="h-3.5 w-3.5" />
+              Support
+            </a>
+            <a
+              href="https://github.com/conmeara/pto-planner-v3"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-slate-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700"
+            >
+              <Github className="h-3.5 w-3.5" />
+              GitHub
+            </a>
+          </div>
         </div>
       </div>
     </div>
