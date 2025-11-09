@@ -5,6 +5,7 @@ import type { PlannerData, PTODay, CustomHoliday, StrategyType, PTOSettings, Wee
 import { optimizePTO, type PTOOptimizerConfig, type OptimizationResult } from '@/lib/pto-optimizer';
 import { formatDateLocal, parseDateLocal, isSameDay, matchesHoliday } from '@/lib/date-utils';
 import { addCustomHoliday, batchAddHolidays, clearHolidaysForYear, deleteCustomHoliday } from '@/app/actions/holiday-actions';
+import { migrateLocalDataToDatabase } from '@/app/actions/user-actions';
 
 // ============================================================================
 // LocalStorage Keys
@@ -364,6 +365,76 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       setSelectedDays(dates);
     }
   }, [plannerData]);
+
+  // Migrate localStorage data to database when user first signs in
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined') {
+      return;
+    }
+
+    // Check if migration has already been done for this user
+    const migrationKey = `pto_planner_migration_done_${plannerData?.user?.id}`;
+    const migrationDone = localStorage.getItem(migrationKey);
+
+    if (migrationDone) {
+      return; // Already migrated
+    }
+
+    // Check if there's any localStorage data to migrate
+    const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
+    const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
+    const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
+    const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, []);
+
+    const hasLocalData =
+      storedDays.length > 0 ||
+      Object.keys(storedSettings).length > 0 ||
+      storedHolidays.length > 0 ||
+      storedWeekend.length > 0;
+
+    if (!hasLocalData) {
+      // No data to migrate, mark as done
+      localStorage.setItem(migrationKey, 'true');
+      return;
+    }
+
+    // Perform migration
+    const performMigration = async () => {
+      try {
+        const result = await migrateLocalDataToDatabase({
+          selectedDays: storedDays,
+          settings: {
+            initial_balance: storedSettings.initial_balance,
+            pto_start_date: storedSettings.pto_start_date,
+            carry_over_limit: storedSettings.carry_over_limit,
+            pto_display_unit: storedSettings.pto_display_unit,
+            hours_per_day: storedSettings.hours_per_day,
+          },
+          holidays: storedHolidays.map(h => ({
+            name: h.name,
+            date: h.date,
+            repeats_yearly: h.repeats_yearly,
+            is_paid_holiday: h.is_paid_holiday,
+          })),
+          weekendDays: storedWeekend,
+        });
+
+        if (result.success && result.data?.migrated) {
+          console.log('Successfully migrated local data:', result.data.details);
+          // Mark migration as complete
+          localStorage.setItem(migrationKey, 'true');
+          // Optionally clear localStorage data after successful migration
+          // (keeping it for now in case user wants to go back to local mode)
+        } else if (!result.success) {
+          console.error('Failed to migrate local data:', result.error);
+        }
+      } catch (error) {
+        console.error('Error during data migration:', error);
+      }
+    };
+
+    performMigration();
+  }, [isAuthenticated, plannerData?.user?.id]);
 
   // Save selected days to localStorage when not authenticated
   useEffect(() => {

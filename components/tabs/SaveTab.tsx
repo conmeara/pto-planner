@@ -64,13 +64,13 @@ const SaveTab: React.FC = () => {
               💾 Your data is saved locally
             </p>
             <p className="text-blue-700 dark:text-blue-400">
-              Everything you've planned is saved on this device. Want to access it from other devices?
+              All your PTO plans, settings, and holidays are saved on this device.
             </p>
           </div>
 
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-              <strong>Create a free account</strong> to sync your PTO plan across all your devices. We'll send you a magic link - no password needed!
+              <strong>Create a free account</strong> to sync your PTO data across all your devices. When you sign in, all your local data will be automatically saved to your account. We'll send you a magic link - no password needed!
             </p>
 
             <form onSubmit={handleSignIn} className="space-y-4">

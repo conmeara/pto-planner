@@ -68,8 +68,8 @@ const TABS: TabConfig[] = [
   {
     type: TabType.SAVE,
     icon: UserRound,
-    label: 'Account',
-    panelTitle: 'Account & Sync',
+    label: 'Save',
+    panelTitle: 'Save & Sync',
     panelDescription: 'Sign in to sync across devices and keep changes in step automatically.',
   },
 ];
