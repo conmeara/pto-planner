@@ -409,6 +409,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
             carry_over_limit: storedSettings.carry_over_limit,
             pto_display_unit: storedSettings.pto_display_unit,
             hours_per_day: storedSettings.hours_per_day,
+            hours_per_week: storedSettings.hours_per_week,
           },
           holidays: storedHolidays.map(h => ({
             name: h.name,
@@ -531,6 +532,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       initial_balance: 15,
       pto_display_unit: 'days',
       hours_per_day: 8,
+      hours_per_week: 40,
       carry_over_limit: 5,
     });
   }, [plannerData]);

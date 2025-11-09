@@ -15,6 +15,14 @@ const ACCRUAL_FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' }
 ];
 
+const DEFAULT_HOURS_PER_DAY = 8;
+const DEFAULT_HOURS_PER_WEEK = 40;
+
+const hasCustomHourSettings = (hoursPerDay: number, hoursPerWeek: number): boolean => {
+  const differsFrom = (value: number, baseline: number) => Math.abs(value - baseline) > 0.001;
+  return differsFrom(hoursPerDay, DEFAULT_HOURS_PER_DAY) || differsFrom(hoursPerWeek, DEFAULT_HOURS_PER_WEEK);
+};
+
 const toDateInputValue = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
@@ -58,6 +66,7 @@ interface LocalPTOSettings {
   carryoverResetDate: string;
   displayUnit: 'days' | 'hours';
   hoursPerDay: number;
+  hoursPerWeek: number;
 }
 
 const PTOTab: React.FC = () => {
@@ -70,17 +79,22 @@ const PTOTab: React.FC = () => {
     const settings = getSettings();
     const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
     const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
-    const hoursPerDay = settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : 8;
+    const hoursPerDay =
+      settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : DEFAULT_HOURS_PER_DAY;
+    const hoursPerWeek =
+      settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
+    const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
     return {
       initialBalance: settings.initial_balance || 15,
       asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
       accrualFrequency: 'monthly',
       accrualAmount: 1.25,
       maxCarryover: settings.carry_over_limit ?? 5,
-      enableCarryoverLimit: carryoverEnabled,
+      enableCarryoverLimit: advancedEnabled,
       carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
       displayUnit,
       hoursPerDay,
+      hoursPerWeek,
     };
   });
 
@@ -92,17 +106,22 @@ const PTOTab: React.FC = () => {
     if (settings) {
       const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
       const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
-      const hoursPerDay = settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : 8;
+      const hoursPerDay =
+        settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : DEFAULT_HOURS_PER_DAY;
+      const hoursPerWeek =
+        settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
+      const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
       setLocalSettings({
         initialBalance: settings.initial_balance || 15,
         asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
         accrualFrequency: 'monthly',
         accrualAmount: 1.25,
         maxCarryover: settings.carry_over_limit ?? 5,
-        enableCarryoverLimit: carryoverEnabled,
+        enableCarryoverLimit: advancedEnabled,
         carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
         displayUnit,
         hoursPerDay,
+        hoursPerWeek,
       });
     }
   }, [plannerData?.settings, getSettings]);
@@ -113,7 +132,7 @@ const PTOTab: React.FC = () => {
 
     // Convert numeric fields to numbers
     let parsedValue: string | number = value;
-    if (['initialBalance', 'accrualAmount', 'maxCarryover'].includes(name)) {
+    if (['initialBalance', 'accrualAmount', 'maxCarryover', 'hoursPerDay', 'hoursPerWeek'].includes(name)) {
       parsedValue = parseFloat(value) || 0;
     }
 
@@ -141,7 +160,7 @@ const PTOTab: React.FC = () => {
     });
   };
 
-  const handleCarryoverToggle = (checked: boolean) => {
+  const handleAdvancedToggle = (checked: boolean) => {
     setLocalSettings((prev) => {
       if (checked) {
         return {
@@ -154,6 +173,8 @@ const PTOTab: React.FC = () => {
       return {
         ...prev,
         enableCarryoverLimit: false,
+        hoursPerDay: DEFAULT_HOURS_PER_DAY,
+        hoursPerWeek: DEFAULT_HOURS_PER_WEEK,
       };
     });
   };
@@ -174,6 +195,7 @@ const PTOTab: React.FC = () => {
         renewal_date: renewalDateValue ?? undefined,
         pto_display_unit: localSettings.displayUnit,
         hours_per_day: localSettings.hoursPerDay,
+        hours_per_week: localSettings.hoursPerWeek,
       };
       saveLocalSettings(settings);
       setSaveStatus('success');
@@ -197,6 +219,7 @@ const PTOTab: React.FC = () => {
           allow_negative_balance: false,
           pto_display_unit: localSettings.displayUnit,
           hours_per_day: localSettings.hoursPerDay,
+          hours_per_week: localSettings.hoursPerWeek,
         });
 
         if (!settingsResult.success) {
@@ -257,6 +280,8 @@ const PTOTab: React.FC = () => {
     localSettings.carryoverResetDate,
     localSettings.accrualAmount,
     localSettings.displayUnit,
+    localSettings.hoursPerDay,
+    localSettings.hoursPerWeek,
     handleSave,
   ]);
 
@@ -366,12 +391,12 @@ const PTOTab: React.FC = () => {
           </div>
 
           <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            <span>Max carryover</span>
+            <span>Advanced</span>
             <button
               type="button"
               role="switch"
               aria-checked={localSettings.enableCarryoverLimit}
-              onClick={() => handleCarryoverToggle(!localSettings.enableCarryoverLimit)}
+              onClick={() => handleAdvancedToggle(!localSettings.enableCarryoverLimit)}
               className={cn(
                 'relative inline-flex h-5 w-10 flex-shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-1 dark:focus-visible:ring-rose-500',
                 localSettings.enableCarryoverLimit
@@ -418,6 +443,42 @@ const PTOTab: React.FC = () => {
                   onChange={handleChange}
                   className="!h-8 px-2 py-1 text-xs"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="hoursPerDay" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Hours per PTO day
+                </Label>
+                <Input
+                  id="hoursPerDay"
+                  name="hoursPerDay"
+                  type="number"
+                  min="0.25"
+                  max="24"
+                  step="0.25"
+                  value={localSettings.hoursPerDay}
+                  onChange={handleChange}
+                  className="!h-8 px-2 py-1 text-xs"
+                />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">Used when converting PTO days to hours</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="hoursPerWeek" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Hours per week
+                </Label>
+                <Input
+                  id="hoursPerWeek"
+                  name="hoursPerWeek"
+                  type="number"
+                  min="1"
+                  max="168"
+                  step="0.5"
+                  value={localSettings.hoursPerWeek}
+                  onChange={handleChange}
+                  className="!h-8 px-2 py-1 text-xs"
+                />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">Aligns PTO plans with non-standard schedules</p>
               </div>
             </>
           )}
