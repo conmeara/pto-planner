@@ -998,13 +998,17 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         return null;
       }).filter((d): d is Date => d !== null);
 
-      // Calculate remaining PTO after already selected days
-      const initialBalance = getCurrentBalance();
-      const usedDays = selectedDays.length;
-      const availableDays = Math.max(initialBalance - usedDays, 0);
+      // Calculate total PTO available for the entire year
+      // Use end-of-year balance to account for accrual throughout the year
+      const endOfYear = new Date(targetYear, 11, 31); // December 31 of target year
+      const totalYearBalance = getBalanceAsOf(endOfYear);
+
+      // For optimization across the full year, use the total allocation
+      // The optimizer will filter out already selected days via existingPTODays
+      const availableDays = Math.max(totalYearBalance, 0);
 
       if (availableDays <= 0) {
-        console.warn('No PTO days available');
+        console.warn('No PTO days available for optimization');
         setSuggestedDays([]);
         setLastOptimizationResult(null);
         return null;
@@ -1035,7 +1039,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         return null;
       }
     },
-    [getSettings, getWeekendDays, getHolidays, getCurrentBalance, selectedDays]
+    [getSettings, getWeekendDays, getHolidays, getBalanceAsOf, selectedDays]
   );
 
   // Context value
