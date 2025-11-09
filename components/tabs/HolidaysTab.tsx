@@ -172,30 +172,38 @@ const HolidaysTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-3 text-slate-800 dark:text-slate-100">
-
+    <div className="space-y-3 text-[hsl(var(--ghibli-forest))]">
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Country Selection */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label htmlFor="country" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label
+              htmlFor="country"
+              className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+            >
               Country
             </Label>
             {isLoadingHolidays && (
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Loading holidays...</span>
+              <span className="text-[11px] text-[hsl(var(--primary) / 0.7)]">
+                Loading holidays...
+              </span>
             )}
           </div>
           <div className="relative">
-            <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-300" />
+            <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[hsl(var(--primary) / 0.55)]" />
             <select
               id="country"
               value={selectedCountry}
               onChange={(event) => handleCountryChange(event.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-400"
+              className="w-full rounded-lg border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] py-1.5 pl-8 pr-3 text-xs text-[hsl(var(--foreground))] shadow-[0_18px_40px_-30px_rgba(38,73,70,0.45)] transition focus:outline-none focus:ring-2 focus:ring-[hsl(var(--secondary) / 0.4)] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isLoadingHolidays}
             >
               {availableCountries.map((country) => (
-                <option key={country.code} value={country.code} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+                <option
+                  key={country.code}
+                  value={country.code}
+                  className="bg-[hsl(var(--card))] text-[hsl(var(--foreground))]"
+                >
                   {country.name}
                 </option>
               ))}
@@ -206,9 +214,9 @@ const HolidaysTab: React.FC = () => {
         {/* Add Custom Holiday Form */}
         <form
           onSubmit={handleAddHoliday}
-          className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+          className="space-y-1.5 rounded-3xl border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card) / 0.7)] p-3 shadow-[0_24px_60px_-40px_rgba(38,73,70,0.45)] backdrop-blur-sm"
         >
-          <Label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+          <Label className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]">
             Add Custom Holiday
           </Label>
           <div className="flex gap-2">
@@ -217,33 +225,31 @@ const HolidaysTab: React.FC = () => {
               value={customHolidayName}
               onChange={(event) => setCustomHolidayName(event.target.value)}
               placeholder="Holiday name"
-              className="!h-8 flex-1 px-2 py-1 text-xs"
+              className="!h-8 flex-1 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] px-2 py-1 text-xs shadow-[0_18px_40px_-30px_rgba(38,73,70,0.45)]"
             />
             <Input
               id="custom-holiday-date"
               type="date"
               value={customHolidayDate}
               onChange={(event) => setCustomHolidayDate(event.target.value)}
-              className="!h-8 w-32 px-2 py-1 text-xs"
+              className="!h-8 w-32 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] px-2 py-1 text-xs shadow-[0_18px_40px_-30px_rgba(38,73,70,0.45)]"
             />
             <div className="flex items-center gap-1.5">
               <Checkbox
                 id="custom-holiday-repeats"
                 checked={customHolidayRepeats}
                 onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
-                className="border-slate-300 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 dark:border-slate-600"
+                className="border-[hsl(var(--border) / 0.7)] data-[state=checked]:border-[hsl(var(--secondary))] data-[state=checked]:bg-[hsl(var(--secondary))]"
               />
-              <Label htmlFor="custom-holiday-repeats" className="text-xs text-slate-600 dark:text-slate-300">
+              <Label htmlFor="custom-holiday-repeats" className="text-xs text-[hsl(var(--ghibli-forest) / 0.65)]">
                 Yearly
               </Label>
             </div>
             <Button
               type="submit"
               size="sm"
-              disabled={
-                isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
-              }
-              className="h-8 bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              disabled={isAddingHoliday || !customHolidayName.trim() || !customHolidayDate}
+              className="h-8 rounded-full bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] shadow-[0_18px_36px_-28px_rgba(68,118,102,0.6)] hover:bg-[hsl(var(--secondary) / 0.9)]"
             >
               {isAddingHoliday ? 'Adding…' : 'Add'}
             </Button>
@@ -252,7 +258,7 @@ const HolidaysTab: React.FC = () => {
       </div>
 
       {successMessage && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-500/10 dark:text-emerald-300">
+        <div className="rounded-2xl border border-[hsl(var(--secondary) / 0.4)] bg-[hsl(var(--secondary) / 0.2)] px-3 py-1.5 text-xs text-[hsl(var(--secondary-foreground))] shadow-[0_18px_40px_-30px_rgba(68,118,102,0.45)]">
           <p className="flex items-center gap-2">
             <CheckCircle className="h-4 w-4" />
             {successMessage}
@@ -261,24 +267,24 @@ const HolidaysTab: React.FC = () => {
       )}
 
       {errorMessage && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-600 shadow-sm dark:border-rose-900/60 dark:bg-rose-500/10 dark:text-rose-300">
+        <div className="rounded-2xl border border-[hsl(var(--destructive) / 0.4)] bg-[hsl(var(--destructive) / 0.16)] px-3 py-1.5 text-xs text-[hsl(var(--destructive))] shadow-[0_18px_40px_-30px_rgba(199,109,94,0.45)]">
           {errorMessage}
         </div>
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-300">
+        <div className="flex items-center justify-between text-xs font-medium text-[hsl(var(--ghibli-forest) / 0.6)]">
           <span>{holidays.length} holidays</span>
           <span className="uppercase">{selectedCountry}</span>
         </div>
 
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <div className="max-h-64 overflow-y-auto rounded-3xl border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card) / 0.75)] shadow-[0_24px_70px_-48px_rgba(38,73,70,0.4)]">
           {sortedHolidays.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            <div className="px-4 py-6 text-center text-xs text-[hsl(var(--ghibli-forest) / 0.55)]">
               {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
             </div>
           ) : (
-            <div className="divide-y divide-slate-200 dark:divide-slate-700">
+            <div className="divide-y divide-[hsl(var(--border) / 0.5)]">
               {sortedHolidays.map((holiday, index) => {
                 const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
                 const isRemoving = removingId === key;
@@ -286,27 +292,31 @@ const HolidaysTab: React.FC = () => {
                 return (
                   <div
                     key={key}
-                    className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-                      index % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50/50 dark:bg-slate-900/20'
-                    }`}
+                    className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition ${
+                      index % 2 === 0
+                        ? 'bg-[hsl(var(--card) / 0.95)]'
+                        : 'bg-[hsl(var(--card) / 0.88)]'
+                    } hover:bg-[hsl(var(--primary) / 0.08)]`}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <span className="truncate font-medium text-slate-800 dark:text-slate-100">{holiday.name}</span>
-                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                      <span className="truncate font-medium">{holiday.name}</span>
+                      <span className="shrink-0 text-[hsl(var(--ghibli-forest) / 0.6)]">
                         {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
                       </span>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                        holiday.repeats_yearly
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                      }`}>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          holiday.repeats_yearly
+                            ? 'bg-[hsl(var(--secondary) / 0.22)] text-[hsl(var(--secondary-foreground))]'
+                            : 'bg-[hsl(var(--muted) / 0.6)] text-[hsl(var(--ghibli-forest) / 0.6)]'
+                        }`}
+                      >
                         {holiday.repeats_yearly ? 'Yearly' : 'Once'}
                       </span>
                     </div>
                     <button
                       onClick={() => handleRemoveHoliday(holiday)}
                       disabled={isRemoving || isLoadingHolidays}
-                      className="shrink-0 text-slate-400 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-rose-400"
+                      className="shrink-0 text-[hsl(var(--ghibli-forest) / 0.45)] transition hover:text-[hsl(var(--destructive))] disabled:cursor-not-allowed disabled:opacity-50"
                       title="Delete holiday"
                     >
                       <Trash2 className={`h-3.5 w-3.5 ${isRemoving ? 'animate-spin' : ''}`} />
@@ -319,7 +329,7 @@ const HolidaysTab: React.FC = () => {
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+      <p className="text-[11px] text-[hsl(var(--ghibli-forest) / 0.55)]">
         Official holidays are sourced from the Nager.Date public dataset. Changing your country will update the list for {new Date().getFullYear()}.
       </p>
     </div>

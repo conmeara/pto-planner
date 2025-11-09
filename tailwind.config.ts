@@ -24,6 +24,13 @@ const config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        ghibli: {
+          sky: "hsl(var(--ghibli-sky))",
+          haze: "hsl(var(--ghibli-haze))",
+          wind: "hsl(var(--ghibli-wind))",
+          pond: "hsl(var(--ghibli-pond))",
+          forest: "hsl(var(--ghibli-forest))",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",

@@ -159,24 +159,35 @@ const PTOTab: React.FC = () => {
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr),minmax(0,1fr)] md:items-start">
-        <div className="space-y-3 rounded-xl border border-slate-200/70 bg-white/80 p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60">
+        <div className="space-y-3 rounded-3xl border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card) / 0.78)] p-4 shadow-[0_36px_90px_-48px_rgba(38,73,70,0.6)] backdrop-blur-md">
           <div className="flex items-center justify-end">
-            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] text-[hsl(var(--ghibli-forest) / 0.65)]">
               {isPending ? (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300">Saving…</span>
+                <span className="rounded-full bg-[hsl(var(--primary) / 0.2)] px-2 py-0.5 text-[hsl(var(--primary) / 0.65)]">
+                  Saving…
+                </span>
               ) : saveStatus === 'success' ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">Saved</span>
+                <span className="rounded-full bg-[hsl(var(--secondary) / 0.25)] px-2 py-0.5 text-[hsl(var(--secondary-foreground))]">
+                  Saved
+                </span>
               ) : saveStatus === 'error' ? (
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300">Will retry</span>
+                <span className="rounded-full bg-[hsl(var(--destructive) / 0.2)] px-2 py-0.5 text-[hsl(var(--destructive))]">
+                  Will retry
+                </span>
               ) : (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Synced</span>
+                <span className="rounded-full bg-[hsl(var(--muted) / 0.55)] px-2 py-0.5 text-[hsl(var(--ghibli-forest) / 0.7)]">
+                  Synced
+                </span>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="initialBalance"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 Initial balance (days)
               </Label>
               <Input
@@ -187,29 +198,35 @@ const PTOTab: React.FC = () => {
                 step="0.5"
                 value={localSettings.initialBalance}
                 onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
+                className="!h-8 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] px-2 py-1 text-xs shadow-[0_14px_30px_-22px_rgba(42,84,74,0.4)]"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="asOfDate"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 As of date
               </Label>
               <div className="relative">
-                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[hsl(var(--primary) / 0.5)]" />
                 <Input
                   id="asOfDate"
                   name="asOfDate"
                   type="date"
                   value={localSettings.asOfDate}
                   onChange={handleChange}
-                  className="!h-8 pl-8 pr-2 text-xs"
+                  className="!h-8 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] pl-8 pr-2 text-xs shadow-[0_14px_30px_-22px_rgba(42,84,74,0.4)]"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="accrualFrequency"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 Accrual frequency
               </Label>
               <select
@@ -217,7 +234,7 @@ const PTOTab: React.FC = () => {
                 name="accrualFrequency"
                 value={localSettings.accrualFrequency}
                 onChange={handleChange}
-                className="w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-rose-500"
+                className="w-full rounded-lg border border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] py-1.5 px-2 text-xs text-[hsl(var(--foreground))] shadow-[0_14px_30px_-22px_rgba(42,84,74,0.4)] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary) / 0.35)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {ACCRUAL_FREQUENCIES.map((freq) => (
                   <option key={freq.value} value={freq.value}>
@@ -228,7 +245,10 @@ const PTOTab: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="accrualAmount"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 Accrual amount
               </Label>
               <Input
@@ -239,13 +259,18 @@ const PTOTab: React.FC = () => {
                 step="0.5"
                 value={localSettings.accrualAmount}
                 onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
+                className="!h-8 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] px-2 py-1 text-xs shadow-[0_14px_30px_-22px_rgba(42,84,74,0.4)]"
               />
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">Per {localSettings.accrualFrequency} period</p>
+              <p className="text-[10px] text-[hsl(var(--ghibli-forest) / 0.5)]">
+                Per {localSettings.accrualFrequency} period
+              </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              <Label
+                htmlFor="maxCarryover"
+                className="text-xs font-semibold uppercase tracking-[0.08em] text-[hsl(var(--ghibli-forest) / 0.6)]"
+              >
                 Max carryover (days)
               </Label>
               <Input
@@ -256,7 +281,7 @@ const PTOTab: React.FC = () => {
                 step="0.5"
                 value={localSettings.maxCarryover}
                 onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
+                className="!h-8 rounded-lg border-[hsl(var(--border) / 0.7)] bg-[hsl(var(--card))] px-2 py-1 text-xs shadow-[0_14px_30px_-22px_rgba(42,84,74,0.4)]"
               />
             </div>
           </div>
@@ -264,7 +289,7 @@ const PTOTab: React.FC = () => {
 
         <div className="flex flex-col gap-3">
           <PTOBalanceCard />
-          <div className="rounded-lg border border-slate-200/70 bg-white/90 p-2.5 text-[11px] text-slate-600 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
+          <div className="rounded-2xl border border-[hsl(var(--border) / 0.65)] bg-[hsl(var(--card) / 0.68)] p-3 text-[11px] text-[hsl(var(--ghibli-forest) / 0.65)] shadow-[0_28px_70px_-48px_rgba(42,84,74,0.45)] backdrop-blur-sm">
             PTO totals update the moment you change a field. Your selections and accrual details sync automatically to your account or local device.
           </div>
         </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrainCircuit, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { usePlanner } from '@/contexts/PlannerContext';
 import type { StrategyType } from '@/types';
 
@@ -129,44 +130,54 @@ const SuggestedPTOTab: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        {STRATEGIES.map((strategy) => (
-          <div
-            key={strategy.type}
-            className={`p-3 rounded-lg cursor-pointer transition-all border ${
-              currentStrategy === strategy.type
-                ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 ring-2 ring-amber-400 dark:ring-amber-600'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-amber-200 dark:hover:border-amber-800'
-            }`}
-            onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`p-1 rounded ${
-                    currentStrategy === strategy.type
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300'
-                  }`}
-                >
-                  {strategy.icon}
-                </div>
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">{strategy.title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{strategy.description}</p>
-                </div>
-              </div>
-              {currentStrategy === strategy.type && suggestedDays.length > 0 && (
-                <Badge className="bg-amber-500 text-white">
-                  {suggestedDays.length} suggested
-                </Badge>
+        {STRATEGIES.map((strategy) => {
+          const isActive = currentStrategy === strategy.type;
+
+          return (
+            <div
+              key={strategy.type}
+              className={cn(
+                'group cursor-pointer rounded-2xl border px-4 py-3 transition-all duration-200',
+                isActive
+                  ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent) / 0.22)] shadow-[0_18px_40px_-28px_rgba(189,169,90,0.65)] ring-2 ring-[hsl(var(--accent) / 0.45)]'
+                  : 'border-[hsl(var(--border) / 0.75)] bg-[hsl(var(--card) / 0.78)] shadow-[0_12px_30px_-24px_rgba(60,98,86,0.35)] hover:border-[hsl(var(--accent) / 0.4)] hover:shadow-[0_16px_40px_-30px_rgba(60,98,86,0.45)]',
               )}
+              onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--accent-foreground))] shadow-[0_8px_18px_-12px_rgba(189,169,90,0.45)] transition-colors duration-200',
+                      isActive
+                        ? 'bg-[hsl(var(--accent))]'
+                        : 'bg-[hsl(var(--accent) / 0.25)] group-hover:bg-[hsl(var(--accent) / 0.35)]',
+                    )}
+                  >
+                    {strategy.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-[hsl(var(--ghibli-forest))]">
+                      {strategy.title}
+                    </h3>
+                    <p className="text-sm text-[hsl(var(--ghibli-forest) / 0.65)]">
+                      {strategy.description}
+                    </p>
+                  </div>
+                </div>
+                {isActive && suggestedDays.length > 0 && (
+                  <Badge className="bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] shadow-[0_10px_24px_-16px_rgba(80,130,110,0.45)]">
+                    {suggestedDays.length} suggested
+                  </Badge>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {isOptimizing && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-500/10 dark:text-blue-200">
+        <div className="flex items-center gap-2 rounded-2xl border border-[hsl(var(--primary) / 0.35)] bg-[hsl(var(--primary) / 0.14)] px-3 py-2 text-xs text-[hsl(var(--primary) / 0.7)] shadow-[0_12px_30px_-24px_rgba(70,110,125,0.35)]">
           <BrainCircuit className="h-3.5 w-3.5 animate-spin" />
           Crunching calendar data…
         </div>
