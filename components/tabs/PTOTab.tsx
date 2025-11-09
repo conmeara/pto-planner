@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
-import PTOBalanceCard from '@/components/PTOBalanceCard';
+import { cn } from '@/lib/utils';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -15,12 +15,49 @@ const ACCRUAL_FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' }
 ];
 
+const toDateInputValue = (date: Date): string => {
+  return date.toISOString().split('T')[0];
+};
+
+const getDefaultResetDate = (asOfDate?: string): string => {
+  if (asOfDate) {
+    const base = new Date(`${asOfDate}T00:00:00`);
+    return toDateInputValue(new Date(base.getFullYear(), 11, 31));
+  }
+  const today = new Date();
+  return toDateInputValue(new Date(today.getFullYear(), 11, 31));
+};
+
+const convertBetweenUnits = (
+  value: number,
+  fromUnit: 'days' | 'hours',
+  toUnit: 'days' | 'hours',
+  hoursPerDay: number
+): number => {
+  if (!Number.isFinite(value)) return 0;
+  const normalizedHours = hoursPerDay > 0 ? hoursPerDay : 8;
+  if (fromUnit === toUnit) {
+    return value;
+  }
+  if (fromUnit === 'days' && toUnit === 'hours') {
+    const converted = value * normalizedHours;
+    return Math.round(converted * 1000) / 1000;
+  }
+  // from hours to days
+  const converted = value / normalizedHours;
+  return Math.round(converted * 1000) / 1000;
+};
+
 interface LocalPTOSettings {
   initialBalance: number;
   asOfDate: string;
   accrualFrequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   accrualAmount: number;
   maxCarryover: number;
+  enableCarryoverLimit: boolean;
+  carryoverResetDate: string;
+  displayUnit: 'days' | 'hours';
+  hoursPerDay: number;
 }
 
 const PTOTab: React.FC = () => {
@@ -31,25 +68,41 @@ const PTOTab: React.FC = () => {
   // Initialize local settings from planner data or localStorage
   const [localSettings, setLocalSettings] = useState<LocalPTOSettings>(() => {
     const settings = getSettings();
+    const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
+    const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
+    const hoursPerDay = settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : 8;
     return {
       initialBalance: settings.initial_balance || 15,
       asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
       accrualFrequency: 'monthly',
       accrualAmount: 1.25,
-      maxCarryover: settings.carry_over_limit || 5,
+      maxCarryover: settings.carry_over_limit ?? 5,
+      enableCarryoverLimit: carryoverEnabled,
+      carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
+      displayUnit,
+      hoursPerDay,
     };
   });
+
+  const unitLabel = localSettings.displayUnit === 'hours' ? 'hours' : 'days';
 
   // Update local settings when planner data changes
   useEffect(() => {
     const settings = getSettings();
     if (settings) {
+      const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
+      const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
+      const hoursPerDay = settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : 8;
       setLocalSettings({
         initialBalance: settings.initial_balance || 15,
         asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
         accrualFrequency: 'monthly',
         accrualAmount: 1.25,
-        maxCarryover: settings.carry_over_limit || 5,
+        maxCarryover: settings.carry_over_limit ?? 5,
+        enableCarryoverLimit: carryoverEnabled,
+        carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
+        displayUnit,
+        hoursPerDay,
       });
     }
   }, [plannerData?.settings, getSettings]);
@@ -70,18 +123,57 @@ const PTOTab: React.FC = () => {
     });
   };
 
+  const handleDisplayUnitChange = (nextUnit: 'days' | 'hours') => {
+    setLocalSettings((prev) => {
+      if (nextUnit === prev.displayUnit) {
+        return prev;
+      }
+
+      const hoursPerDay = prev.hoursPerDay > 0 ? prev.hoursPerDay : 8;
+
+      return {
+        ...prev,
+        displayUnit: nextUnit,
+        initialBalance: convertBetweenUnits(prev.initialBalance, prev.displayUnit, nextUnit, hoursPerDay),
+        accrualAmount: convertBetweenUnits(prev.accrualAmount, prev.displayUnit, nextUnit, hoursPerDay),
+        maxCarryover: convertBetweenUnits(prev.maxCarryover, prev.displayUnit, nextUnit, hoursPerDay),
+      };
+    });
+  };
+
+  const handleCarryoverToggle = (checked: boolean) => {
+    setLocalSettings((prev) => {
+      if (checked) {
+        return {
+          ...prev,
+          enableCarryoverLimit: true,
+          carryoverResetDate: prev.carryoverResetDate || getDefaultResetDate(prev.asOfDate),
+        };
+      }
+
+      return {
+        ...prev,
+        enableCarryoverLimit: false,
+      };
+    });
+  };
+
   // Save settings (to localStorage or database)
   const handleSave = React.useCallback(async () => {
     setSaveStatus('idle');
 
     // If not authenticated, save to localStorage
     if (!isAuthenticated) {
+      const carryOverLimitValue = localSettings.enableCarryoverLimit ? localSettings.maxCarryover : null;
+      const renewalDateValue = localSettings.enableCarryoverLimit ? localSettings.carryoverResetDate : null;
+
       const settings = {
         initial_balance: localSettings.initialBalance,
         pto_start_date: localSettings.asOfDate,
-        carry_over_limit: localSettings.maxCarryover,
-        pto_display_unit: 'days' as const,
-        hours_per_day: 8,
+        carry_over_limit: carryOverLimitValue ?? undefined,
+        renewal_date: renewalDateValue ?? undefined,
+        pto_display_unit: localSettings.displayUnit,
+        hours_per_day: localSettings.hoursPerDay,
       };
       saveLocalSettings(settings);
       setSaveStatus('success');
@@ -92,16 +184,19 @@ const PTOTab: React.FC = () => {
     // If authenticated, save to database
     startTransition(async () => {
       try {
+        const carryOverLimitValue = localSettings.enableCarryoverLimit ? localSettings.maxCarryover : null;
+        const renewalDateValue = localSettings.enableCarryoverLimit ? localSettings.carryoverResetDate : null;
+
         // Save PTO settings
         const settingsResult = await savePTOSettings({
           pto_start_date: localSettings.asOfDate,
           initial_balance: localSettings.initialBalance,
-          carry_over_limit: localSettings.maxCarryover,
+          carry_over_limit: carryOverLimitValue,
           max_balance: undefined,
-          renewal_date: undefined,
+          renewal_date: renewalDateValue,
           allow_negative_balance: false,
-          pto_display_unit: 'days',
-          hours_per_day: 8,
+          pto_display_unit: localSettings.displayUnit,
+          hours_per_day: localSettings.hoursPerDay,
         });
 
         if (!settingsResult.success) {
@@ -154,119 +249,178 @@ const PTOTab: React.FC = () => {
     }, 500); // Auto-save 500ms after user stops typing
 
     return () => clearTimeout(timeoutId);
-  }, [localSettings.initialBalance, localSettings.asOfDate, localSettings.maxCarryover, handleSave]);
+  }, [
+    localSettings.initialBalance,
+    localSettings.asOfDate,
+    localSettings.maxCarryover,
+    localSettings.enableCarryoverLimit,
+    localSettings.carryoverResetDate,
+    localSettings.accrualAmount,
+    localSettings.displayUnit,
+    handleSave,
+  ]);
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr),minmax(0,1fr)] md:items-start">
-        <div className="space-y-3 rounded-xl border border-slate-200/70 bg-white/80 p-3 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60">
-          <div className="flex items-center justify-end">
-            <div className="text-[11px] text-slate-500 dark:text-slate-400">
-              {isPending ? (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300">Saving…</span>
-              ) : saveStatus === 'success' ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">Saved</span>
-              ) : saveStatus === 'error' ? (
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300">Will retry</span>
-              ) : (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Synced</span>
+      <div className="space-y-3 p-3">
+        <div className="flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+          <span>Input unit</span>
+          <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 p-0.5 dark:border-slate-600 dark:bg-slate-900/70">
+            <button
+              type="button"
+              onClick={() => handleDisplayUnitChange('days')}
+              className={cn(
+                'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
+                localSettings.displayUnit === 'days'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
               )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                Initial balance (days)
-              </Label>
-              <Input
-                id="initialBalance"
-                name="initialBalance"
-                type="number"
-                min="0"
-                step="0.5"
-                value={localSettings.initialBalance}
-                onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                As of date
-              </Label>
-              <div className="relative">
-                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
-                <Input
-                  id="asOfDate"
-                  name="asOfDate"
-                  type="date"
-                  value={localSettings.asOfDate}
-                  onChange={handleChange}
-                  className="!h-8 pl-8 pr-2 text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                Accrual frequency
-              </Label>
-              <select
-                id="accrualFrequency"
-                name="accrualFrequency"
-                value={localSettings.accrualFrequency}
-                onChange={handleChange}
-                className="w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-rose-500"
-              >
-                {ACCRUAL_FREQUENCIES.map((freq) => (
-                  <option key={freq.value} value={freq.value}>
-                    {freq.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                Accrual amount
-              </Label>
-              <Input
-                id="accrualAmount"
-                name="accrualAmount"
-                type="number"
-                min="0"
-                step="0.5"
-                value={localSettings.accrualAmount}
-                onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
-              />
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">Per {localSettings.accrualFrequency} period</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                Max carryover (days)
-              </Label>
-              <Input
-                id="maxCarryover"
-                name="maxCarryover"
-                type="number"
-                min="0"
-                step="0.5"
-                value={localSettings.maxCarryover}
-                onChange={handleChange}
-                className="!h-8 px-2 py-1 text-xs"
-              />
-            </div>
+            >
+              Days
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDisplayUnitChange('hours')}
+              className={cn(
+                'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
+                localSettings.displayUnit === 'hours'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+              )}
+            >
+              Hours
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <PTOBalanceCard />
-          <div className="rounded-lg border border-slate-200/70 bg-white/90 p-2.5 text-[11px] text-slate-600 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
-            PTO totals update the moment you change a field. Your selections and accrual details sync automatically to your account or local device.
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Initial balance ({unitLabel})
+            </Label>
+            <Input
+              id="initialBalance"
+              name="initialBalance"
+              type="number"
+              min="0"
+              step="0.5"
+              value={localSettings.initialBalance}
+              onChange={handleChange}
+              className="!h-8 px-2 py-1 text-xs"
+            />
           </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              As of date
+            </Label>
+            <div className="relative">
+              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="asOfDate"
+                name="asOfDate"
+                type="date"
+                value={localSettings.asOfDate}
+                onChange={handleChange}
+                className="!h-8 pl-8 pr-2 text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Accrual amount ({unitLabel})
+            </Label>
+            <Input
+              id="accrualAmount"
+              name="accrualAmount"
+              type="number"
+              min="0"
+              step="0.5"
+              value={localSettings.accrualAmount}
+              onChange={handleChange}
+              className="!h-8 px-2 py-1 text-xs"
+            />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              Per {localSettings.accrualFrequency} period ({unitLabel})
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Accrual frequency
+            </Label>
+            <select
+              id="accrualFrequency"
+              name="accrualFrequency"
+              value={localSettings.accrualFrequency}
+              onChange={handleChange}
+              className="w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-rose-500"
+            >
+              {ACCRUAL_FREQUENCIES.map((freq) => (
+                <option key={freq.value} value={freq.value}>
+                  {freq.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
+            <span>Max carryover</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={localSettings.enableCarryoverLimit}
+              onClick={() => handleCarryoverToggle(!localSettings.enableCarryoverLimit)}
+              className={cn(
+                'relative inline-flex h-5 w-10 flex-shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-1 dark:focus-visible:ring-rose-500',
+                localSettings.enableCarryoverLimit
+                  ? 'border-emerald-500 bg-emerald-500'
+                  : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'
+              )}
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform transform',
+                  localSettings.enableCarryoverLimit ? 'translate-x-5' : 'translate-x-1'
+                )}
+              />
+            </button>
+          </div>
+
+          {localSettings.enableCarryoverLimit && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Max carryover ({unitLabel})
+                </Label>
+                <Input
+                  id="maxCarryover"
+                  name="maxCarryover"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={localSettings.maxCarryover}
+                  onChange={handleChange}
+                  className="!h-8 px-2 py-1 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="carryoverResetDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                  Rollover date
+                </Label>
+                <Input
+                  id="carryoverResetDate"
+                  name="carryoverResetDate"
+                  type="date"
+                  value={localSettings.carryoverResetDate}
+                  onChange={handleChange}
+                  className="!h-8 px-2 py-1 text-xs"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

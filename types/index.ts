@@ -127,9 +127,9 @@ export const PTODaySchema = z.object({
 export const PTOSettingsSchema = z.object({
   pto_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   initial_balance: z.number().min(0),
-  carry_over_limit: z.number().min(0).optional(),
+  carry_over_limit: z.number().min(0).nullable().optional(),
   max_balance: z.number().min(0).optional(),
-  renewal_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  renewal_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   allow_negative_balance: z.boolean().default(false),
   pto_display_unit: z.enum(['days', 'hours']).default('days'),
   hours_per_day: z.number().positive().max(24).default(8),
