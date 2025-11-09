@@ -171,18 +171,22 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   const goPrev = useCallback(() => {
-    if (!canGoPrev) {
+    const items = virtualizer.getVirtualItems();
+    const current = items[0]?.index ?? todayRow;
+    if (current <= 0) {
       return;
     }
-    scrollToRow(currentRow - 1);
-  }, [canGoPrev, currentRow, scrollToRow]);
+    scrollToRow(current - 1);
+  }, [virtualizer, todayRow, scrollToRow]);
 
   const goNext = useCallback(() => {
-    if (!canGoNext) {
+    const items = virtualizer.getVirtualItems();
+    const current = items[0]?.index ?? todayRow;
+    if (current >= rowCount - 1) {
       return;
     }
-    scrollToRow(currentRow + 1);
-  }, [canGoNext, currentRow, scrollToRow]);
+    scrollToRow(current + 1);
+  }, [virtualizer, todayRow, rowCount, scrollToRow]);
 
   const goToday = useCallback(() => {
     scrollToRow(todayRow, 'smooth');
