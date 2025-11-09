@@ -358,21 +358,24 @@ const VirtualizedCalendar: React.FC = () => {
   if (!isMounted) {
     return (
       <div className="mx-auto w-full max-w-7xl px-0">
-        <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 p-6 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
+        <div className="overflow-hidden rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card) / 0.92)] p-6 shadow-[0_36px_90px_-48px_rgba(45,86,83,0.55)] backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--card) / 0.82)]">
           <div className="flex h-80 items-center justify-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading calendar...</p>
+            <p className="text-sm text-[hsl(var(--ghibli-forest) / 0.6)]">Loading calendar...</p>
           </div>
         </div>
       </div>
     );
   }
 
+  const navButtonClass =
+    'border-none bg-[hsl(var(--primary) / 0.14)] text-[hsl(var(--ghibli-forest))] hover:bg-[hsl(var(--primary) / 0.2)] shadow-[0_18px_36px_-26px_rgba(38,73,70,0.6)]';
+
   return (
     <div className="mx-auto w-full max-w-7xl px-0">
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
-        <div className="border-b border-slate-200/70 px-6 py-4 dark:border-slate-700/60">
+      <div className="overflow-hidden rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card) / 0.94)] shadow-[0_40px_120px_-60px_rgba(42,90,85,0.55)] backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--card) / 0.84)]">
+        <div className="border-b border-[hsl(var(--border) / 0.8)] bg-[linear-gradient(135deg,hsl(var(--card) / 0.92)_0%,hsl(var(--ghibli-haze))_100%)] px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            <div className="text-sm font-medium text-[hsl(var(--ghibli-forest) / 0.75)]">
               {navState.label || 'Current months'}
             </div>
             <div className="flex items-center gap-1">
@@ -381,11 +384,18 @@ const VirtualizedCalendar: React.FC = () => {
                 size="sm"
                 onClick={goPrev}
                 disabled={!canGoPrev || isPending}
+                className={navButtonClass}
               >
                 <ChevronLeft className="h-4 w-4" />
                 <span className="sr-only sm:not-sr-only sm:ml-1">Prev</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={goToday} disabled={isPending}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToday}
+                disabled={isPending}
+                className={navButtonClass}
+              >
                 Today
               </Button>
               <Button
@@ -393,6 +403,7 @@ const VirtualizedCalendar: React.FC = () => {
                 size="sm"
                 onClick={goNext}
                 disabled={!canGoNext || isPending}
+                className={navButtonClass}
               >
                 <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
                 <ChevronRight className="h-4 w-4" />
