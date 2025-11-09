@@ -2,10 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, UserRound, X, type LucideIcon } from 'lucide-react';
+import { UserRound, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useCalendarNavigation } from '@/contexts/CalendarNavigationContext';
-import { Button } from './ui/button';
 
 // Tab components
 import PTOTab from './tabs/PTOTab';
@@ -78,8 +76,6 @@ const TABS: TabConfig[] = [
 
 const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<TabType>(TabType.NONE);
-  const { goPrev, goNext, goToday, canGoPrev, canGoNext, label, isBusy } =
-    useCalendarNavigation();
 
   // Close the panel when users press Escape
   useEffect(() => {
@@ -118,12 +114,11 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   };
 
   return (
-    <div className={cn('relative z-20 mx-auto w-full max-w-6xl px-2 sm:px-0', className)}>
+    <div className={cn('sticky top-0 z-30 mx-auto px-0', className)}>
       <motion.div
-        layout
         className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 sm:px-3">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5">
           <div className="flex flex-wrap items-center gap-1">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -157,34 +152,6 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
               );
             })}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="hidden text-xs font-medium text-slate-500 dark:text-slate-400 sm:inline">
-              {label || 'Current months'}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goPrev}
-                disabled={!canGoPrev || isBusy}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="sr-only sm:not-sr-only sm:ml-1">Prev</span>
-              </Button>
-              <Button variant="outline" size="sm" onClick={goToday} disabled={isBusy}>
-                Today
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goNext}
-                disabled={!canGoNext || isBusy}
-              >
-                <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
         </div>
 
         <AnimatePresence initial={false} mode="wait">
@@ -198,7 +165,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
               transition={{ duration: 0.24, ease: 'easeInOut' }}
               className="overflow-hidden border-t border-slate-200/70 bg-white/95 text-slate-900 dark:border-slate-700/60 dark:bg-slate-950/80 dark:text-slate-100 max-h-[70vh]"
             >
-              <div className="px-4 py-4 sm:px-6 sm:py-5">
+              <div className="px-6 py-5">
                 <div className="flex items-start justify-between gap-3 pb-3">
                   <div>
                     {ActiveIcon && (

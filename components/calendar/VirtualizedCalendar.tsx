@@ -16,6 +16,7 @@ import {
   format,
   startOfMonth,
 } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import MonthCard from './MonthCard';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ import {
   useCalendarNavigationDispatch,
   type CalendarNavigationState,
 } from '@/contexts/CalendarNavigationContext';
+import { Button } from '@/components/ui/button';
 
 const MONTHS_PER_ROW = 3;
 const BACK_YEARS = 2;
@@ -355,7 +357,7 @@ const VirtualizedCalendar: React.FC = () => {
 
   if (!isMounted) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-2 sm:px-0">
+      <div className="mx-auto w-full max-w-7xl px-0">
         <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 p-6 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
           <div className="flex h-80 items-center justify-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading calendar...</p>
@@ -366,20 +368,46 @@ const VirtualizedCalendar: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-2 sm:px-0">
+    <div className="mx-auto w-full max-w-7xl px-0">
       <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
-        <div className="border-b border-slate-200/70 px-4 py-4 dark:border-slate-700/60 sm:px-6">
-          <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
-            {navState.label || 'Current months'}
+        <div className="border-b border-slate-200/70 px-6 py-4 dark:border-slate-700/60">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              {navState.label || 'Current months'}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goPrev}
+                disabled={!canGoPrev || isPending}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="sr-only sm:not-sr-only sm:ml-1">Prev</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={goToday} disabled={isPending}>
+                Today
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goNext}
+                disabled={!canGoNext || isPending}
+              >
+                <span className="sr-only sm:not-sr-only sm:mr-1">Next</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
         <div
           ref={scrollerRef}
           className={cn(
-            'relative h-[65vh] overflow-y-auto px-4 py-6 sm:px-6',
+            'relative h-[78vh] overflow-y-auto px-6 py-6',
             isPending ? 'opacity-95' : 'opacity-100',
           )}
+          style={{ scrollbarGutter: 'stable' }}
         >
           <div
             style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
