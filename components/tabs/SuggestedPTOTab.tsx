@@ -63,8 +63,6 @@ const SuggestedPTOTab: React.FC = () => {
     totalDaysOff: number;
     efficiency: number;
   } | null>(null);
-  // Track which days were added by the current strategy
-  const [currentStrategyDays, setCurrentStrategyDays] = useState<Date[]>([]);
 
   const initialPTO = getCurrentBalance();
   const usedPTO = selectedDays.length;
@@ -79,19 +77,26 @@ const SuggestedPTOTab: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
-  // Handle strategy selection with automatic application
+  // Re-run optimization when selectedDays change (if a strategy is active)
+  useEffect(() => {
+    if (currentStrategy && !isOptimizing) {
+      // Re-optimize to adjust for the new selected days
+      const result = runOptimization(currentStrategy);
+      if (result) {
+        setOptimizationResult({
+          totalPTOUsed: result.totalPTOUsed,
+          totalDaysOff: result.totalDaysOff,
+          efficiency: result.averageEfficiency,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDays, currentStrategy]);
+
+  // Handle strategy selection - shows suggestions in yellow
   const handleSelectStrategy = async (strategyType: StrategyType) => {
     // If clicking the same strategy, deselect it
     if (currentStrategy === strategyType) {
-      // Remove the strategy days from selected days
-      setSelectedDays((prev) =>
-        prev.filter((day) =>
-          !currentStrategyDays.some((stratDay) =>
-            stratDay.getTime() === day.getTime()
-          )
-        )
-      );
-      setCurrentStrategyDays([]);
       setSuggestedDays([]);
       setCurrentStrategy(null);
       setOptimizationResult(null);
@@ -101,17 +106,6 @@ const SuggestedPTOTab: React.FC = () => {
     setIsOptimizing(true);
 
     try {
-      // First, remove any previously applied strategy days
-      if (currentStrategyDays.length > 0) {
-        setSelectedDays((prev) =>
-          prev.filter((day) =>
-            !currentStrategyDays.some((stratDay) =>
-              stratDay.getTime() === day.getTime()
-            )
-          )
-        );
-      }
-
       const result = runOptimization(strategyType);
 
       if (result) {
@@ -121,28 +115,9 @@ const SuggestedPTOTab: React.FC = () => {
           efficiency: result.averageEfficiency,
         });
 
-        // Store the suggested days before applying
-        const newStrategyDays = [...result.suggestedDays];
-        setCurrentStrategyDays(newStrategyDays);
-
-        // Automatically apply the suggestions by merging into selectedDays
-        setSelectedDays((prev) => {
-          const combined = [...prev];
-          newStrategyDays.forEach((suggestedDate) => {
-            const alreadyExists = combined.some((d) =>
-              d.getTime() === suggestedDate.getTime()
-            );
-            if (!alreadyExists) {
-              combined.push(suggestedDate);
-            }
-          });
-          return combined;
-        });
-
-        // Clear suggested days array since they're now in selectedDays
-        setSuggestedDays([]);
-        // Keep the strategy selected so user can toggle it off
-        // (runOptimization already set currentStrategy, but being explicit)
+        // Keep suggested days in the suggestedDays array so they show as yellow
+        // User will manually click them to select (turn green)
+        // (runOptimization already sets suggestedDays and currentStrategy)
       }
     } catch (error) {
       console.error('Optimization error:', error);
@@ -156,14 +131,14 @@ const SuggestedPTOTab: React.FC = () => {
       <div className="flex flex-col gap-2 mb-2">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Click a strategy to automatically apply it to your calendar.
+            Click a strategy to see suggested PTO days (shown in yellow).
           </p>
           <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800">
             {availablePTO} days available
           </Badge>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Click the active strategy again to remove those days.
+          Click suggested days on the calendar to select them as PTO.
         </p>
       </div>
 
@@ -200,9 +175,9 @@ const SuggestedPTOTab: React.FC = () => {
                   <p className="text-sm text-gray-600 dark:text-gray-400">{strategy.description}</p>
                 </div>
               </div>
-              {currentStrategy === strategy.type && (
-                <Badge className="bg-green-500 text-white">
-                  ✓ Applied
+              {currentStrategy === strategy.type && suggestedDays.length > 0 && (
+                <Badge className="bg-amber-500 text-white">
+                  {suggestedDays.length} suggested
                 </Badge>
               )}
             </div>
@@ -217,31 +192,30 @@ const SuggestedPTOTab: React.FC = () => {
         </div>
       )}
 
-      {optimizationResult && currentStrategy && (
-        <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-md">
+      {optimizationResult && currentStrategy && suggestedDays.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-md border border-amber-200 dark:border-amber-700">
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-4 w-4 text-green-600 dark:text-green-400" />
-            <h4 className="text-sm font-semibold text-green-800 dark:text-green-300">
-              Strategy Applied
+            <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              Suggested Plan Preview
             </h4>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-xs uppercase tracking-wide text-green-600 dark:text-green-400">Used</p>
+              <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-400">Will Use</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{optimizationResult.totalPTOUsed}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-green-600 dark:text-green-400">Days off</p>
+              <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-400">Days Off</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{optimizationResult.totalDaysOff}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-green-600 dark:text-green-400">Efficiency</p>
+              <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-400">Efficiency</p>
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{optimizationResult.efficiency.toFixed(2)}x</p>
             </div>
           </div>
-          <p className="text-xs text-green-600 dark:text-green-400 mt-3 text-center">
-            Strategy days have been automatically added to your calendar.
-            Click the strategy again to remove them.
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-3 text-center">
+            {suggestedDays.length} days are highlighted in yellow on the calendar. Click them to select as PTO.
           </p>
         </div>
       )}
