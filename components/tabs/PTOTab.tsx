@@ -1,14 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useTransition } from 'react';
-import { Calendar, Palette } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import PTOBalanceCard from '@/components/PTOBalanceCard';
-import { cn } from '@/lib/utils';
-
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -17,23 +15,12 @@ const ACCRUAL_FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' }
 ];
 
-// PTO color options (note: color is currently not stored in DB, for future use)
-const PTO_COLORS = [
-  { value: 'green-500', label: 'Green', class: 'bg-green-500' },
-  { value: 'blue-500', label: 'Blue', class: 'bg-blue-500' },
-  { value: 'purple-500', label: 'Purple', class: 'bg-purple-500' },
-  { value: 'rose-500', label: 'Rose', class: 'bg-rose-500' },
-  { value: 'amber-500', label: 'Amber', class: 'bg-amber-500' },
-  { value: 'emerald-500', label: 'Emerald', class: 'bg-emerald-500' },
-];
-
 interface LocalPTOSettings {
   initialBalance: number;
   asOfDate: string;
   accrualFrequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   accrualAmount: number;
   maxCarryover: number;
-  ptoColor: string;
 }
 
 const PTOTab: React.FC = () => {
@@ -50,7 +37,6 @@ const PTOTab: React.FC = () => {
       accrualFrequency: 'monthly',
       accrualAmount: 1.25,
       maxCarryover: settings.carry_over_limit || 5,
-      ptoColor: 'green-500',
     };
   });
 
@@ -64,7 +50,6 @@ const PTOTab: React.FC = () => {
         accrualFrequency: 'monthly',
         accrualAmount: 1.25,
         maxCarryover: settings.carry_over_limit || 5,
-        ptoColor: 'green-500',
       });
     }
   }, [plannerData?.settings, getSettings]);
@@ -82,14 +67,6 @@ const PTOTab: React.FC = () => {
     setLocalSettings({
       ...localSettings,
       [name]: parsedValue
-    });
-  };
-
-  // Handle color selection
-  const handleColorSelect = (color: string) => {
-    setLocalSettings({
-      ...localSettings,
-      ptoColor: color
     });
   };
 
@@ -281,29 +258,6 @@ const PTOTab: React.FC = () => {
                 onChange={handleChange}
                 className="!h-8 px-2 py-1 text-xs"
               />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                <Palette className="h-3 w-3 text-slate-400" />
-                PTO color
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {PTO_COLORS.map((color) => (
-                  <button
-                    key={color.value}
-                    onClick={() => handleColorSelect(color.value)}
-                    className={cn(
-                      'h-6 w-6 rounded-full border border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-900',
-                      color.class,
-                      localSettings.ptoColor === color.value ? 'ring-2 ring-white ring-offset-2 dark:ring-slate-900' : ''
-                    )}
-                    title={color.label}
-                    type="button"
-                    aria-label={`Select ${color.label} color`}
-                  />
-                ))}
-              </div>
             </div>
           </div>
         </div>
