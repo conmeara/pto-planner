@@ -61,7 +61,7 @@ const TABS: TabConfig[] = [
   },
   {
     type: TabType.WEEKENDS,
-    legendDotClass: 'bg-muted',
+    legendDotClass: 'bg-border',
     label: 'Weekends',
     panelTitle: 'Weekend Configuration',
     panelDescription: 'Toggle which days count as weekends for calculations.',
