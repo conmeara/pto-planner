@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       date: holiday.date,
       name: holiday.localName || holiday.name,
       description: holiday.name,
-      repeats_yearly: true, // Public holidays typically repeat yearly
+      repeats_yearly: false, // Observed dates vary year-to-year, so treat as specific instances
       country_code: country.toUpperCase(),
     }));
 

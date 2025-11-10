@@ -19,6 +19,8 @@ const STORAGE_KEYS = {
   COUNTRY: 'pto_planner_country',
 };
 
+const HOLIDAY_PREFETCH_YEARS = 3;
+
 // ============================================================================
 // LocalStorage Helper Functions
 // ============================================================================
@@ -44,6 +46,11 @@ const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
     }
   }
   return defaultValue;
+};
+
+const hasHolidaysForYear = (holidays: CustomHoliday[], year: number): boolean => {
+  const yearPrefix = `${year}-`;
+  return holidays.some((holiday) => typeof holiday.date === 'string' && holiday.date.startsWith(yearPrefix));
 };
 
 // =========================================================================
@@ -356,12 +363,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       // Load from database (authenticated user)
       const dates = plannerData.ptoDays
         .filter((day) => day.status === 'planned')
-        .map((day) => new Date(day.date));
+        .map((day) => parseDateLocal(day.date));
       setSelectedDays(dates);
     } else {
       // Load from localStorage (unauthenticated user)
       const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
-      const dates = storedDays.map((dateStr) => new Date(dateStr));
+      const dates = storedDays.map((dateStr) => parseDateLocal(dateStr));
       setSelectedDays(dates);
     }
   }, [plannerData]);
@@ -702,7 +709,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         user_id: plannerData?.user?.id ?? 'local',
         name: holiday.name,
         date: holiday.date,
-        repeats_yearly: holiday.repeats_yearly ?? true,
+        repeats_yearly: holiday.repeats_yearly ?? false,
         is_paid_holiday: holiday.is_paid_holiday ?? true,
         created_at: holiday.created_at ?? nowIso,
         updated_at: holiday.updated_at ?? nowIso,
@@ -876,9 +883,31 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     [addCustomHoliday, generateHolidayId, isAuthenticated, localHolidays, saveLocalHolidays, setPlannerData]
   );
 
-  const detectCountryFromClient = useCallback(async (): Promise<string | null> => {
+  const detectCountryFromClient = useCallback(async (options?: { preferIp?: boolean }): Promise<string | null> => {
     if (typeof window === 'undefined') {
       return null;
+    }
+
+    const detectFromIP = async () => {
+      try {
+        const response = await fetch('https://ipapi.co/json/');
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.country_code) {
+            return String(data.country_code).toUpperCase();
+          }
+        }
+      } catch (error) {
+        console.warn('Geo lookup failed; falling back to default country.', error);
+      }
+      return null;
+    };
+
+    if (options?.preferIp) {
+      const ipCountry = await detectFromIP();
+      if (ipCountry) {
+        return ipCountry;
+      }
     }
 
     const locale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -893,19 +922,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       return languageMatch[1].toUpperCase();
     }
 
-    try {
-      const response = await fetch('https://ipapi.co/json/');
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.country_code) {
-          return String(data.country_code).toUpperCase();
-        }
-      }
-    } catch (error) {
-      console.warn('Geo lookup failed; falling back to default country.', error);
-    }
-
-    return null;
+    return detectFromIP();
   }, []);
 
   useEffect(() => {
@@ -917,10 +934,13 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
     const initializeHolidays = async () => {
       const storedCountry = localStorage.getItem(STORAGE_KEYS.COUNTRY);
-      let resolvedCountry = storedCountry ? storedCountry.toUpperCase() : null;
+      const normalizedStored = storedCountry ? storedCountry.toUpperCase() : null;
+      const preferIpLookup = !normalizedStored;
+
+      let resolvedCountry = normalizedStored;
 
       if (!resolvedCountry) {
-        resolvedCountry = await detectCountryFromClient();
+        resolvedCountry = await detectCountryFromClient({ preferIp: preferIpLookup });
       }
 
       if (!resolvedCountry) {
@@ -931,20 +951,35 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         setCountryCode(resolvedCountry);
       }
 
-      const currentYear = new Date().getFullYear();
-      const autoLoadKey = `${STORAGE_KEYS.HOLIDAYS}_autoload_${resolvedCountry}_${currentYear}`;
-      const alreadyLoaded = localStorage.getItem(autoLoadKey);
-      const existingHolidays = getHolidays();
+      const baseYear = new Date().getFullYear();
+      const yearsToPrefetch = Array.from({ length: HOLIDAY_PREFETCH_YEARS }, (_, index) => baseYear + index);
 
-      if (!alreadyLoaded && existingHolidays.length === 0) {
+      for (const year of yearsToPrefetch) {
+        if (cancelled) {
+          break;
+        }
+
+        const autoLoadKey = `${STORAGE_KEYS.HOLIDAYS}_autoload_${resolvedCountry}_${year}`;
+        const alreadyLoaded = localStorage.getItem(autoLoadKey);
+        const existingHolidays = getHolidays();
+        const hasYearData = existingHolidays.length > 0 && hasHolidaysForYear(existingHolidays, year);
+
+        if (alreadyLoaded || hasYearData) {
+          continue;
+        }
+
         const result = await refreshHolidays(resolvedCountry, {
-          year: currentYear,
+          year,
           replaceExisting: true,
           persistCountry: true,
           silent: true,
         });
 
-        if (result.success && !cancelled) {
+        if (cancelled) {
+          break;
+        }
+
+        if (result.success) {
           localStorage.setItem(autoLoadKey, 'true');
         }
       }

@@ -16,6 +16,7 @@ import {
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import { cn } from '@/lib/utils';
+import { formatDateLocal } from '@/lib/date-utils';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -33,7 +34,7 @@ const hasCustomHourSettings = (hoursPerDay: number, hoursPerWeek: number): boole
 };
 
 const toDateInputValue = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  return formatDateLocal(date);
 };
 
 const getDefaultResetDate = (asOfDate?: string): string => {
@@ -95,7 +96,7 @@ const PTOTab: React.FC = () => {
     const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
     return {
       initialBalance: settings.initial_balance || 15,
-      asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
+      asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
       accrualFrequency: 'monthly',
       accrualAmount: 1.25,
       maxCarryover: settings.carry_over_limit ?? 5,
@@ -122,7 +123,7 @@ const PTOTab: React.FC = () => {
       const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
       setLocalSettings({
         initialBalance: settings.initial_balance || 15,
-        asOfDate: settings.pto_start_date || new Date().toISOString().split('T')[0],
+        asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
         accrualFrequency: 'monthly',
         accrualAmount: 1.25,
         maxCarryover: settings.carry_over_limit ?? 5,

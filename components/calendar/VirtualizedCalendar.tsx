@@ -50,6 +50,13 @@ const getRowLabel = (months: Date[]) => {
   const first = months[0];
   const last = months[months.length - 1];
 
+  console.log('[getRowLabel] Generating label for months:', {
+    first: first.toISOString(),
+    last: last.toISOString(),
+    firstYear: first.getFullYear(),
+    lastYear: last.getFullYear()
+  });
+
   if (format(first, 'yyyy') === format(last, 'yyyy')) {
     return `${format(first, 'MMM')} – ${format(last, 'MMM yyyy')}`;
   }
@@ -62,6 +69,11 @@ const VirtualizedCalendar: React.FC = () => {
   const [processingDates, setProcessingDates] = useState<Set<string>>(new Set());
   const [hasInitialScroll, setHasInitialScroll] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [today] = useState(() => {
+    const currentDate = new Date();
+    console.log('[VirtualizedCalendar] Initializing with date:', currentDate.toISOString(), 'Year:', currentDate.getFullYear());
+    return currentDate;
+  });
 
   const {
     isDateSelected,
@@ -76,21 +88,39 @@ const VirtualizedCalendar: React.FC = () => {
 
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+    console.log('[VirtualizedCalendar] Component mounted. Today:', today.toISOString(), 'Year:', today.getFullYear());
+  }, [today]);
 
-  const today = useMemo(() => new Date(), []);
-  const anchorMonth = useMemo(() => startOfMonth(today), [today]);
+  const anchorMonth = useMemo(() => {
+    const month = startOfMonth(today);
+    console.log('[anchorMonth]', month.toISOString(), 'Year:', month.getFullYear());
+    return month;
+  }, [today]);
+
   const minMonth = useMemo(
-    () => startOfMonth(addYears(anchorMonth, -BACK_YEARS)),
+    () => {
+      const month = startOfMonth(addYears(anchorMonth, -BACK_YEARS));
+      console.log('[minMonth]', month.toISOString(), 'Year:', month.getFullYear());
+      return month;
+    },
     [anchorMonth],
   );
+
   const maxMonth = useMemo(
-    () => startOfMonth(addYears(anchorMonth, FORWARD_YEARS)),
+    () => {
+      const month = startOfMonth(addYears(anchorMonth, FORWARD_YEARS));
+      console.log('[maxMonth]', month.toISOString(), 'Year:', month.getFullYear());
+      return month;
+    },
     [anchorMonth],
   );
 
   const monthKeys = useMemo(
-    () => eachMonthOfInterval({ start: minMonth, end: maxMonth }),
+    () => {
+      const months = eachMonthOfInterval({ start: minMonth, end: maxMonth });
+      console.log('[monthKeys] Total months:', months.length, 'First:', months[0]?.toISOString(), 'Last:', months[months.length - 1]?.toISOString());
+      return months;
+    },
     [minMonth, maxMonth],
   );
 
@@ -100,12 +130,20 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   const anchorIndex = useMemo(
-    () => differenceInCalendarMonths(anchorMonth, minMonth),
+    () => {
+      const index = differenceInCalendarMonths(anchorMonth, minMonth);
+      console.log('[anchorIndex]', index, 'anchorMonth:', anchorMonth.toISOString(), 'minMonth:', minMonth.toISOString());
+      return index;
+    },
     [anchorMonth, minMonth],
   );
 
   const todayRow = useMemo(
-    () => clamp(Math.floor(anchorIndex / MONTHS_PER_ROW), 0, rowCount - 1),
+    () => {
+      const row = clamp(Math.floor(anchorIndex / MONTHS_PER_ROW), 0, rowCount - 1);
+      console.log('[todayRow]', row, 'anchorIndex:', anchorIndex, 'rowCount:', rowCount);
+      return row;
+    },
     [anchorIndex, rowCount],
   );
 
@@ -120,13 +158,13 @@ const VirtualizedCalendar: React.FC = () => {
     getScrollElement: () => scrollerRef.current,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     overscan: OVERSCAN_ROWS,
-    initialOffset: todayRow * ESTIMATED_ROW_HEIGHT,
   });
 
   const monthsForRow = useCallback(
     (rowIndex: number) => {
       const startIndex = rowIndex * MONTHS_PER_ROW;
       const slice = monthKeys.slice(startIndex, startIndex + MONTHS_PER_ROW);
+      console.log('[monthsForRow] Row', rowIndex, 'startIndex:', startIndex, 'months:', slice.map(m => `${m.getFullYear()}-${m.getMonth()+1}`));
       return slice.filter(Boolean) as Date[];
     },
     [monthKeys],
@@ -153,11 +191,70 @@ const VirtualizedCalendar: React.FC = () => {
   }, [hasInitialScroll, todayRow, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
-  const currentRow = virtualItems[0]?.index ?? todayRow;
-  const visibleMonths = monthsForRow(currentRow);
+  const viewportStart = virtualizer.scrollOffset ?? 0;
+  const viewportHeight = virtualizer.scrollRect?.height ?? 0;
 
-  const canGoPrev = currentRow > 0;
-  const canGoNext = currentRow < rowCount - 1;
+  const visibleRowIndexes = useMemo(() => {
+    if (!virtualItems.length) {
+      return [todayRow];
+    }
+
+    if (viewportHeight === 0) {
+      return [virtualItems[0]?.index ?? todayRow];
+    }
+
+    const viewportEnd = viewportStart + viewportHeight;
+    const rowsInViewport = virtualItems
+      .filter((item) => {
+        const itemEnd = item.end ?? item.start + item.size;
+        return itemEnd > viewportStart && item.start < viewportEnd;
+      })
+      .map((item) => item.index);
+
+    if (rowsInViewport.length) {
+      return rowsInViewport;
+    }
+
+    const fallbackIndex =
+      virtualItems.find((item) => item.end > viewportStart)?.index ??
+      virtualItems[0]?.index ??
+      todayRow;
+
+    return [fallbackIndex];
+  }, [virtualItems, viewportStart, viewportHeight, todayRow]);
+
+  const firstVisibleRow = visibleRowIndexes[0] ?? todayRow;
+  const lastVisibleRow = visibleRowIndexes[visibleRowIndexes.length - 1] ?? firstVisibleRow;
+  const visibleRowCount = Math.max(visibleRowIndexes.length, 1);
+  const fallbackPageSize = Math.max(
+    1,
+    Math.round((viewportHeight || ESTIMATED_ROW_HEIGHT) / ESTIMATED_ROW_HEIGHT),
+  );
+  const pageSize = visibleRowIndexes.length ? visibleRowCount : fallbackPageSize;
+
+  const visibleMonths = useMemo(() => {
+    const seen = new Set<string>();
+    const months: Date[] = [];
+
+    visibleRowIndexes.forEach((rowIndex) => {
+      monthsForRow(rowIndex).forEach((month) => {
+        const key = format(month, 'yyyy-MM');
+        if (!seen.has(key)) {
+          seen.add(key);
+          months.push(month);
+        }
+      });
+    });
+
+    if (months.length) {
+      return months;
+    }
+
+    return monthsForRow(firstVisibleRow);
+  }, [visibleRowIndexes, monthsForRow, firstVisibleRow]);
+
+  const canGoPrev = firstVisibleRow > 0;
+  const canGoNext = lastVisibleRow < rowCount - 1;
 
   const scrollToRow = useCallback(
     (targetRow: number, behavior: 'auto' | 'smooth' = 'smooth') => {
@@ -171,18 +268,14 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   const goPrev = useCallback(() => {
-    if (!canGoPrev) {
-      return;
-    }
-    scrollToRow(currentRow - 1);
-  }, [canGoPrev, currentRow, scrollToRow]);
+    const targetRow = firstVisibleRow - pageSize;
+    scrollToRow(targetRow);
+  }, [firstVisibleRow, pageSize, scrollToRow]);
 
   const goNext = useCallback(() => {
-    if (!canGoNext) {
-      return;
-    }
-    scrollToRow(currentRow + 1);
-  }, [canGoNext, currentRow, scrollToRow]);
+    const targetRow = firstVisibleRow + pageSize;
+    scrollToRow(targetRow);
+  }, [firstVisibleRow, pageSize, scrollToRow]);
 
   const goToday = useCallback(() => {
     scrollToRow(todayRow, 'smooth');
@@ -300,7 +393,13 @@ const VirtualizedCalendar: React.FC = () => {
 
   useEffect(() => {
     const yearsToConsider = new Set<number>();
-    const rowsToCheck = [currentRow - 1, currentRow, currentRow + 1].filter(
+    const bufferRows = new Set<number>();
+
+    bufferRows.add(firstVisibleRow - 1);
+    visibleRowIndexes.forEach((row) => bufferRows.add(row));
+    bufferRows.add(lastVisibleRow + 1);
+
+    const rowsToCheck = Array.from(bufferRows).filter(
       (index): index is number => index >= 0 && index < rowCount,
     );
 
@@ -353,7 +452,15 @@ const VirtualizedCalendar: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentRow, rowCount, monthsForRow, refreshHolidays, countryCode]);
+  }, [
+    firstVisibleRow,
+    lastVisibleRow,
+    visibleRowIndexes,
+    rowCount,
+    monthsForRow,
+    refreshHolidays,
+    countryCode,
+  ]);
 
   if (!isMounted) {
     return (

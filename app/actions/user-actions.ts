@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { type ActionResult, type User, type PlannerData } from '@/types';
+import { formatDateLocal } from '@/lib/date-utils';
 
 /**
  * Initialize a new user account
@@ -34,7 +35,7 @@ export async function initializeUserAccount(
     }
 
     // Create default PTO settings
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatDateLocal(new Date());
     const { error: settingsError } = await supabase
       .from('pto_settings')
       .insert({
@@ -104,11 +105,17 @@ export async function getUserDashboardData(): Promise<ActionResult<PlannerData>>
     }
 
     // Construct the data object (some fields can be null for new users)
+    // Ensure holiday dates are properly formatted to avoid timezone issues
+    const holidays = (holidaysResult.data || []).map((holiday: any) => ({
+      ...holiday,
+      date: typeof holiday.date === 'string' ? holiday.date : formatDateLocal(new Date(holiday.date)),
+    }));
+
     const data: PlannerData = {
       user: userResult.data as User,
       settings: settingsResult.data || null,
       ptoDays: ptoDaysResult.data || [],
-      holidays: holidaysResult.data || [],
+      holidays,
       weekendConfig: weekendConfigResult.data || [],
       accrualRules: accrualRulesResult.data || [],
       currentBalance: balanceResult.data || null,
@@ -211,7 +218,7 @@ export async function migrateLocalDataToDatabase(localData: {
           .from('pto_settings')
           .upsert({
             user_id: user.id,
-            pto_start_date: localData.settings.pto_start_date || new Date().toISOString().split('T')[0],
+            pto_start_date: localData.settings.pto_start_date || formatDateLocal(new Date()),
             initial_balance: localData.settings.initial_balance ?? 15,
             carry_over_limit: localData.settings.carry_over_limit ?? 5,
             pto_display_unit: localData.settings.pto_display_unit || 'days',
