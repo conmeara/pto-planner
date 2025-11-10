@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { usePlanner } from '@/contexts/PlannerContext';
-import { parseDateLocal } from '@/lib/date-utils';
+import { formatDateLocal, parseDateLocal } from '@/lib/date-utils';
 import type { CustomHoliday } from '@/types';
 import { cn } from '@/lib/utils';
+import { getCalendarYearBounds } from '@/lib/calendar-range';
 
 // Expanded country list (supports Nager.Date API)
 const COUNTRIES = [
@@ -55,6 +56,16 @@ const HolidaysTab: React.FC = () => {
   const [isAddingHoliday, setIsAddingHoliday] = useState(false);
 
   const holidays = getHolidays();
+  const calendarBounds = useMemo(() => getCalendarYearBounds(new Date()), []);
+  const { startYear: calendarStartYear, endYear: calendarEndYear } = calendarBounds;
+
+  const yearRangeKeys = useMemo(() => {
+    const years: string[] = [];
+    for (let year = calendarStartYear; year <= calendarEndYear; year += 1) {
+      years.push(String(year));
+    }
+    return years;
+  }, [calendarStartYear, calendarEndYear]);
 
   useEffect(() => {
     setSelectedCountry(countryCode || 'US');
@@ -72,6 +83,73 @@ const HolidaysTab: React.FC = () => {
   const sortedHolidays = useMemo(() => {
     return [...holidays].sort((a, b) => a.date.localeCompare(b.date));
   }, [holidays]);
+
+  const groupedHolidays = useMemo<Record<string, CustomHoliday[]>>(() => {
+    const groups: Record<string, CustomHoliday[]> = yearRangeKeys.reduce(
+      (acc, year) => {
+        acc[year] = [];
+        return acc;
+      },
+      {} as Record<string, CustomHoliday[]>,
+    );
+
+    const recurringHolidays = sortedHolidays.filter((holiday) => holiday.repeats_yearly);
+
+    sortedHolidays.forEach((holiday) => {
+      if (holiday.repeats_yearly) {
+        return;
+      }
+
+      const date = parseDateLocal(holiday.date);
+      const yearKey = String(date.getFullYear());
+
+      if (groups[yearKey]) {
+        groups[yearKey].push(holiday);
+      }
+    });
+
+    if (recurringHolidays.length > 0) {
+      yearRangeKeys.forEach((yearKey) => {
+        const year = Number(yearKey);
+        recurringHolidays.forEach((holiday) => {
+          const originalDate = parseDateLocal(holiday.date);
+          const projectedDate = new Date(year, originalDate.getMonth(), originalDate.getDate());
+          groups[yearKey].push({
+            ...holiday,
+            date: formatDateLocal(projectedDate),
+          });
+        });
+      });
+    }
+
+    Object.values(groups).forEach((list) => {
+      list.sort((a, b) => a.date.localeCompare(b.date));
+    });
+
+    return groups;
+  }, [sortedHolidays, yearRangeKeys]);
+
+  const yearTabs = yearRangeKeys;
+
+  const [activeYear, setActiveYear] = useState<string>('');
+
+  useEffect(() => {
+    if (yearTabs.length === 0) {
+      setActiveYear('');
+      return;
+    }
+
+    const currentYearKey = String(new Date().getFullYear());
+    if (yearTabs.includes(currentYearKey)) {
+      setActiveYear(currentYearKey);
+      return;
+    }
+
+    setActiveYear(yearTabs[0]);
+  }, [yearTabs]);
+
+  const activeHolidays = activeYear ? groupedHolidays[activeYear] ?? [] : [];
+  const hasLoadedAny = sortedHolidays.length > 0;
 
   const availableCountries = useMemo(() => {
     if (!selectedCountry) return COUNTRIES;
@@ -101,7 +179,7 @@ const HolidaysTab: React.FC = () => {
     }
 
     const count = result.holidays?.length ?? 0;
-    setSuccessMessage(`Loaded ${count} holidays for ${result.countryCode}`);
+    setSuccessMessage(`Loaded ${count} holidays for ${result.countryCode} (${result.year})`);
   };
 
   const formatHolidayDate = (dateStr: string, repeatsYearly: boolean) => {
@@ -171,6 +249,10 @@ const HolidaysTab: React.FC = () => {
     setCustomHolidayDate('');
     setCustomHolidayRepeats(true);
   };
+
+  const formatTabLabel = (key: string) => key;
+
+  const activeYearLabel = activeYear ? formatTabLabel(activeYear) : `${calendarStartYear} – ${calendarEndYear}`;
 
   return (
     <div className="space-y-4 text-sm text-foreground">
@@ -267,20 +349,45 @@ const HolidaysTab: React.FC = () => {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>{holidays.length} holidays</span>
-          <span className="uppercase">{selectedCountry}</span>
+          <span>{activeHolidays.length} holidays</span>
+          <span className="uppercase">{activeYearLabel}</span>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {yearTabs.map((tabKey) => {
+            const isActive = tabKey === activeYear;
+            return (
+              <button
+                type="button"
+                key={tabKey}
+                onClick={() => setActiveYear(tabKey)}
+                className={cn(
+                  'rounded-2xl border px-2.5 py-1 text-[11px] font-medium transition',
+                  isActive
+                    ? 'border-primary bg-primary/15 text-primary'
+                    : 'border-transparent bg-muted text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {formatTabLabel(tabKey)}
+              </button>
+            );
+          })}
         </div>
 
         <div className="max-h-64 overflow-y-auto rounded-3xl border border-border bg-card">
-          {sortedHolidays.length === 0 ? (
+          {!hasLoadedAny ? (
             <div className="px-4 py-6 text-center text-xs text-muted-foreground">
               {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
             </div>
+          ) : activeHolidays.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+              No holidays for {activeYearLabel}.
+            </div>
           ) : (
             <div className="divide-y divide-border/60">
-              {sortedHolidays.map((holiday, index) => {
+              {activeHolidays.map((holiday, index) => {
                 const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
                 const isRemoving = removingId === key;
 
@@ -298,16 +405,11 @@ const HolidaysTab: React.FC = () => {
                       <span className="shrink-0 text-muted-foreground">
                         {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
                       </span>
-                      <span
-                        className={cn(
-                          'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                          holiday.repeats_yearly
-                            ? 'bg-primary/15 text-primary'
-                            : 'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        {holiday.repeats_yearly ? 'Yearly' : 'Once'}
-                      </span>
+                      {holiday.repeats_yearly && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10">
+                          Recurring
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => handleRemoveHoliday(holiday)}
@@ -326,7 +428,7 @@ const HolidaysTab: React.FC = () => {
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        Official holidays are sourced from the Nager.Date public dataset. Changing your country will update the list for {new Date().getFullYear()}.
+        Official holidays are sourced from the Nager.Date public dataset. Changing your country refreshes holidays between {calendarStartYear} and {calendarEndYear}. Recurring events appear in every year with a badge.
       </p>
     </div>
   );

@@ -6,6 +6,7 @@ import { optimizePTO, type PTOOptimizerConfig, type OptimizationResult } from '@
 import { formatDateLocal, parseDateLocal, isSameDay, matchesHoliday } from '@/lib/date-utils';
 import { addCustomHoliday, batchAddHolidays, clearHolidaysForYear, deleteCustomHoliday } from '@/app/actions/holiday-actions';
 import { migrateLocalDataToDatabase } from '@/app/actions/user-actions';
+import { getCalendarYearBounds } from '@/lib/calendar-range';
 
 // ============================================================================
 // LocalStorage Keys
@@ -18,8 +19,6 @@ const STORAGE_KEYS = {
   HOLIDAYS: 'pto_planner_holidays',
   COUNTRY: 'pto_planner_country',
 };
-
-const HOLIDAY_PREFETCH_YEARS = 3;
 
 // ============================================================================
 // LocalStorage Helper Functions
@@ -51,6 +50,55 @@ const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
 const hasHolidaysForYear = (holidays: CustomHoliday[], year: number): boolean => {
   const yearPrefix = `${year}-`;
   return holidays.some((holiday) => typeof holiday.date === 'string' && holiday.date.startsWith(yearPrefix));
+};
+
+const HOLIDAY_YEAR_REGEX = /^(\d{4})/;
+
+const getHolidayYear = (holiday: Pick<CustomHoliday, 'date' | 'repeats_yearly'>): number | null => {
+  if (holiday.repeats_yearly) {
+    return null;
+  }
+
+  const match = HOLIDAY_YEAR_REGEX.exec(holiday.date);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  return Number.isFinite(year) ? year : null;
+};
+
+const createHolidayKey = (holiday: Pick<CustomHoliday, 'date' | 'name'>): string => {
+  return `${holiday.date}__${holiday.name}`;
+};
+
+const mergeHolidayCollections = (
+  existing: CustomHoliday[],
+  incoming: CustomHoliday[],
+  targetYear: number,
+  replaceYearData: boolean,
+): CustomHoliday[] => {
+  const mergedMap = new Map<string, CustomHoliday>();
+
+  existing.forEach((holiday) => {
+    const holidayYear = getHolidayYear(holiday);
+    if (replaceYearData && holidayYear === targetYear) {
+      return;
+    }
+    mergedMap.set(createHolidayKey(holiday), holiday);
+  });
+
+  incoming.forEach((holiday) => {
+    mergedMap.set(createHolidayKey(holiday), holiday);
+  });
+
+  return Array.from(mergedMap.values()).sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date);
+    if (dateCompare !== 0) {
+      return dateCompare;
+    }
+    return a.name.localeCompare(b.name);
+  });
 };
 
 // =========================================================================
@@ -679,6 +727,8 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     const targetCountry = (country || countryCode || 'US').toUpperCase();
     const targetYear = options?.year ?? new Date().getFullYear();
     const shouldToggleLoading = !options?.silent;
+    const replaceYearData = options?.replaceExisting !== false;
+    const existingHolidays = getHolidays();
 
     if (shouldToggleLoading) {
       setIsLoadingHolidays(true);
@@ -689,6 +739,8 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         setIsLoadingHolidays(false);
       }
     };
+
+    let holidaysToReturn: CustomHoliday[] = [];
 
     try {
       const response = await fetch(`/api/holidays?country=${encodeURIComponent(targetCountry)}&year=${targetYear}`);
@@ -715,41 +767,70 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         updated_at: holiday.updated_at ?? nowIso,
       }));
 
-      let holidaysToReturn = normalizedHolidays;
-
       if (isAuthenticated) {
-        if (options?.replaceExisting !== false) {
+        if (replaceYearData) {
           const clearResult = await clearHolidaysForYear(targetYear, true);
           if (!clearResult.success) {
             throw new Error(clearResult.error || 'Failed to clear existing holidays');
           }
         }
 
-        const addResult = await batchAddHolidays(
-          normalizedHolidays.map((holiday) => ({
-            name: holiday.name,
-            date: holiday.date,
-            repeatsYearly: holiday.repeats_yearly,
-            isPaidHoliday: holiday.is_paid_holiday,
-          }))
-        );
+        let holidaysNeedingInsert = normalizedHolidays;
 
-        if (!addResult.success) {
-          throw new Error(addResult.error || 'Failed to save holidays');
+        if (!replaceYearData && existingHolidays.length > 0) {
+          const existingKeys = new Set(existingHolidays.map((holiday) => createHolidayKey(holiday)));
+          holidaysNeedingInsert = normalizedHolidays.filter(
+            (holiday) => !existingKeys.has(createHolidayKey(holiday))
+          );
         }
 
-        holidaysToReturn = addResult.data || [];
+        let insertedHolidays: CustomHoliday[] = [];
+
+        if (holidaysNeedingInsert.length > 0) {
+          const addResult = await batchAddHolidays(
+            holidaysNeedingInsert.map((holiday) => ({
+              name: holiday.name,
+              date: holiday.date,
+              repeatsYearly: holiday.repeats_yearly,
+              isPaidHoliday: holiday.is_paid_holiday,
+            }))
+          );
+
+          if (!addResult.success) {
+            throw new Error(addResult.error || 'Failed to save holidays');
+          }
+
+          insertedHolidays = addResult.data || [];
+        }
+
+        const mergedHolidays = mergeHolidayCollections(
+          existingHolidays,
+          insertedHolidays,
+          targetYear,
+          replaceYearData,
+        );
+
+        holidaysToReturn = mergedHolidays;
+
         setPlannerData((prev) => {
           if (!prev) {
             return prev;
           }
           return {
             ...prev,
-            holidays: holidaysToReturn,
+            holidays: mergedHolidays,
           };
         });
       } else {
-        saveLocalHolidays(holidaysToReturn);
+        const mergedHolidays = mergeHolidayCollections(
+          existingHolidays,
+          normalizedHolidays,
+          targetYear,
+          replaceYearData,
+        );
+
+        holidaysToReturn = mergedHolidays;
+        saveLocalHolidays(mergedHolidays);
       }
 
       if (options?.persistCountry !== false) {
@@ -777,7 +858,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         year: targetYear,
       };
     }
-  }, [batchAddHolidays, clearHolidaysForYear, countryCode, generateHolidayId, isAuthenticated, plannerData, saveLocalHolidays, setCountryCode]);
+  }, [batchAddHolidays, clearHolidaysForYear, countryCode, generateHolidayId, getHolidays, isAuthenticated, plannerData, saveLocalHolidays, setCountryCode]);
 
   const removeHoliday = useCallback(async (holiday: HolidayRemovalTarget) => {
     try {
@@ -951,8 +1032,11 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         setCountryCode(resolvedCountry);
       }
 
-      const baseYear = new Date().getFullYear();
-      const yearsToPrefetch = Array.from({ length: HOLIDAY_PREFETCH_YEARS }, (_, index) => baseYear + index);
+      const { startYear, endYear } = getCalendarYearBounds();
+      const yearsToPrefetch: number[] = [];
+      for (let year = startYear; year <= endYear; year += 1) {
+        yearsToPrefetch.push(year);
+      }
 
       for (const year of yearsToPrefetch) {
         if (cancelled) {

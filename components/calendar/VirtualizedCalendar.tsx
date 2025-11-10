@@ -10,7 +10,6 @@ import React, {
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
-  addYears,
   differenceInCalendarMonths,
   eachMonthOfInterval,
   format,
@@ -28,10 +27,9 @@ import {
   type CalendarNavigationState,
 } from '@/contexts/CalendarNavigationContext';
 import { Button } from '@/components/ui/button';
+import { getCalendarYearBounds } from '@/lib/calendar-range';
 
 const MONTHS_PER_ROW = 3;
-const BACK_YEARS = 2;
-const FORWARD_YEARS = 5;
 const ESTIMATED_ROW_HEIGHT = 520;
 const OVERSCAN_ROWS = 4;
 
@@ -67,13 +65,15 @@ const getRowLabel = (months: Date[]) => {
 const VirtualizedCalendar: React.FC = () => {
   const [isMounted, setIsMounted] = useState(false);
   const [processingDates, setProcessingDates] = useState<Set<string>>(new Set());
-  const [hasInitialScroll, setHasInitialScroll] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [today] = useState(() => {
     const currentDate = new Date();
     console.log('[VirtualizedCalendar] Initializing with date:', currentDate.toISOString(), 'Year:', currentDate.getFullYear());
     return currentDate;
   });
+
+  const calendarBounds = useMemo(() => getCalendarYearBounds(today), [today]);
+  const { startYear, endYear } = calendarBounds;
 
   const {
     isDateSelected,
@@ -97,23 +97,17 @@ const VirtualizedCalendar: React.FC = () => {
     return month;
   }, [today]);
 
-  const minMonth = useMemo(
-    () => {
-      const month = startOfMonth(addYears(anchorMonth, -BACK_YEARS));
-      console.log('[minMonth]', month.toISOString(), 'Year:', month.getFullYear());
-      return month;
-    },
-    [anchorMonth],
-  );
+  const minMonth = useMemo(() => {
+    const month = startOfMonth(new Date(startYear, 0, 1));
+    console.log('[minMonth]', month.toISOString(), 'Year:', month.getFullYear());
+    return month;
+  }, [startYear]);
 
-  const maxMonth = useMemo(
-    () => {
-      const month = startOfMonth(addYears(anchorMonth, FORWARD_YEARS));
-      console.log('[maxMonth]', month.toISOString(), 'Year:', month.getFullYear());
-      return month;
-    },
-    [anchorMonth],
-  );
+  const maxMonth = useMemo(() => {
+    const month = startOfMonth(new Date(endYear, 11, 1));
+    console.log('[maxMonth]', month.toISOString(), 'Year:', month.getFullYear());
+    return month;
+  }, [endYear]);
 
   const monthKeys = useMemo(
     () => {
@@ -171,24 +165,15 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   useEffect(() => {
-    if (hasInitialScroll) {
-      return;
-    }
-
-    if (!scrollerRef.current) {
-      return;
-    }
-
     const id = requestAnimationFrame(() => {
       virtualizer.scrollToIndex(todayRow, {
         align: 'start',
         behavior: 'auto',
       });
-      setHasInitialScroll(true);
     });
 
     return () => cancelAnimationFrame(id);
-  }, [hasInitialScroll, todayRow, virtualizer]);
+  }, [todayRow, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const viewportStart = virtualizer.scrollOffset ?? 0;
