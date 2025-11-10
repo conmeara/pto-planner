@@ -358,9 +358,9 @@ const VirtualizedCalendar: React.FC = () => {
   if (!isMounted) {
     return (
       <div className="mx-auto w-full max-w-7xl px-0">
-        <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 p-6 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
+        <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card p-6">
           <div className="flex h-80 items-center justify-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading calendar...</p>
+            <p className="text-sm text-muted-foreground">Loading calendar...</p>
           </div>
         </div>
       </div>
@@ -369,10 +369,10 @@ const VirtualizedCalendar: React.FC = () => {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-0">
-      <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70">
-        <div className="border-b border-slate-200/70 px-6 py-4 dark:border-slate-700/60">
+      <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card">
+        <div className="px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            <div className="text-sm font-medium text-muted-foreground">
               {navState.label || 'Current months'}
             </div>
             <div className="flex items-center gap-1">

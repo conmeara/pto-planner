@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { updateWeekendConfig } from '@/app/actions/weekend-actions';
+import { cn } from '@/lib/utils';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Sunday' },
@@ -79,35 +80,52 @@ const WeekendTab: React.FC = () => {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {DAYS_OF_WEEK.map((day) => (
-        <div
-          key={day.value}
-          onClick={() => toggleDay(day.value)}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-            weekendDays.includes(day.value)
-              ? 'border-purple-400 bg-purple-50 text-purple-700 dark:border-purple-600 dark:bg-purple-500/20 dark:text-purple-200'
-              : 'border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-purple-600'
-          } ${isPending ? 'pointer-events-none opacity-80' : 'cursor-pointer'}`}
-        >
-          <Checkbox
-            id={`day-${day.value}`}
-            checked={weekendDays.includes(day.value)}
-            onCheckedChange={() => toggleDay(day.value)}
-            className="h-4 w-4 data-[state=checked]:bg-purple-500"
-            disabled={isPending}
-          />
-          <Label
-            htmlFor={`day-${day.value}`}
-            className={`cursor-pointer text-sm leading-none ${
-              isPending ? 'opacity-60' : ''
-            }`}
+      {DAYS_OF_WEEK.map((day) => {
+        const isWeekendDay = weekendDays.includes(day.value);
+
+        return (
+          <div
+            key={day.value}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isWeekendDay}
+            onClick={() => toggleDay(day.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggleDay(day.value);
+              }
+            }}
+            className={cn(
+              'flex items-center gap-2 rounded-2xl border-2 px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              isWeekendDay
+                ? 'border-primary-border bg-primary/15 text-foreground'
+                : 'border-border bg-card text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+              isPending ? 'pointer-events-none opacity-70' : 'cursor-pointer'
+            )}
           >
-            {day.label}
-          </Label>
-        </div>
-      ))}
+            <Checkbox
+              id={`day-${day.value}`}
+              checked={isWeekendDay}
+              onCheckedChange={() => toggleDay(day.value)}
+              className="data-[state=checked]:bg-primary data-[state=checked]:border-primary-border h-4 w-4"
+              disabled={isPending}
+            />
+            <Label
+              htmlFor={`day-${day.value}`}
+              className={cn(
+                'cursor-pointer text-xs font-semibold tracking-wide',
+                isWeekendDay ? 'text-foreground' : 'text-muted-foreground',
+                isPending && 'opacity-70'
+              )}
+            >
+              {day.label}
+            </Label>
+          </div>
+        );
+      })}
       {isPending && (
-        <span className="text-[11px] text-purple-600 dark:text-purple-300">Saving…</span>
+        <span className="text-[11px] text-muted-foreground">Saving…</span>
       )}
     </div>
   );

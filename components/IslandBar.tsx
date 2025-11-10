@@ -40,28 +40,28 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   {
     type: TabType.PTO,
-    legendDotClass: 'bg-green-500',
+    legendDotClass: 'bg-primary',
     label: 'PTO',
     panelTitle: 'PTO Settings',
     panelDescription: 'Adjust balances and accrual – updates are saved instantly.',
   },
   {
     type: TabType.SUGGESTED_PTO,
-    legendDotClass: 'bg-yellow-200 dark:bg-yellow-800',
+    legendDotClass: 'bg-suggested',
     label: 'Suggested',
     panelTitle: 'Suggested PTO Plans',
     panelDescription: 'Pick a strategy and see it reflected on the calendar immediately.',
   },
   {
     type: TabType.PUBLIC_HOLIDAYS,
-    legendDotClass: 'bg-blue-100 dark:bg-blue-900',
+    legendDotClass: 'bg-holiday',
     label: 'Holidays',
     panelTitle: 'Holiday Calendar',
     panelDescription: 'Review and manage holidays that affect your time off.',
   },
   {
     type: TabType.WEEKENDS,
-    legendDotClass: 'bg-gray-100 dark:bg-gray-800',
+    legendDotClass: 'bg-muted',
     label: 'Weekends',
     panelTitle: 'Weekend Configuration',
     panelDescription: 'Toggle which days count as weekends for calculations.',
@@ -113,10 +113,10 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   };
 
   return (
-    <div className={cn('mx-auto w-full max-w-7xl space-y-3 px-0', className)}>
+    <div className={cn('mx-auto w-full max-w-7xl space-y-4 px-0', className)}>
       <div className="sticky top-0 z-40 flex justify-center pt-2">
         <motion.div
-          className="flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/90 px-2 py-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-slate-700/60 dark:bg-slate-950/70 sm:gap-1.5 sm:px-2.5"
+          className="flex items-center gap-1.5 rounded-3xl border border-border/80 bg-muted px-3 py-1.5 text-sm text-muted-foreground sm:px-4"
           layout
           transition={{
             type: 'spring',
@@ -135,10 +135,10 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 type="button"
                 onClick={() => toggleTab(tab.type)}
                 className={cn(
-                  'flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 dark:focus-visible:ring-slate-500 sm:px-2.5',
+                  'inline-flex items-center gap-1 rounded-2xl border border-transparent px-3 py-1.5 text-xs font-semibold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   isActive
-                    ? 'bg-slate-900 text-white shadow-sm dark:bg-white/90 dark:text-slate-900'
-                    : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
+                    ? 'border-border bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground/90'
                 )}
                 aria-expanded={isActive}
                 aria-controls={`island-panel-${tab.type}`}
@@ -177,15 +177,15 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-4 text-slate-900 shadow-md dark:border-slate-700/60 dark:bg-slate-950/85 dark:text-slate-100 sm:px-6"
+            className="rounded-3xl border border-border bg-card px-5 py-5 text-card-foreground sm:px-7"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <span className="text-sm font-semibold text-foreground">
                   {activeTabConfig.panelTitle}
                 </span>
                 {activeTabConfig.panelDescription && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     {activeTabConfig.panelDescription}
                   </p>
                 )}
@@ -196,7 +196,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 <button
                   type="button"
                   onClick={() => setActiveTab(TabType.NONE)}
-                  className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-white"
+                  className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Close panel"
                 >
                   <X className="h-4 w-4" />

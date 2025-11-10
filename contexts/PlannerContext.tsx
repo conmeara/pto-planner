@@ -406,7 +406,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
           settings: {
             initial_balance: storedSettings.initial_balance,
             pto_start_date: storedSettings.pto_start_date,
-            carry_over_limit: storedSettings.carry_over_limit,
+            carry_over_limit: storedSettings.carry_over_limit ?? undefined,
             pto_display_unit: storedSettings.pto_display_unit,
             hours_per_day: storedSettings.hours_per_day,
             hours_per_week: storedSettings.hours_per_week,
@@ -882,15 +882,15 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     }
 
     const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-    const localeMatch = locale?.match(/[-_](?<country>[A-Z]{2})$/i);
-    if (localeMatch?.groups?.country) {
-      return localeMatch.groups.country.toUpperCase();
+    const localeMatch = locale?.match(/[-_]([A-Z]{2})$/i);
+    if (localeMatch?.[1]) {
+      return localeMatch[1].toUpperCase();
     }
 
     const navLanguage = navigator.language;
-    const languageMatch = navLanguage?.match(/[-_](?<country>[A-Z]{2})$/i);
-    if (languageMatch?.groups?.country) {
-      return languageMatch.groups.country.toUpperCase();
+    const languageMatch = navLanguage?.match(/[-_]([A-Z]{2})$/i);
+    if (languageMatch?.[1]) {
+      return languageMatch[1].toUpperCase();
     }
 
     try {

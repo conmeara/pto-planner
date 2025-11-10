@@ -4,6 +4,7 @@ import React, { useState, useEffect, useTransition } from 'react';
 import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import { cn } from '@/lib/utils';
@@ -288,17 +289,17 @@ const PTOTab: React.FC = () => {
   return (
     <div className="space-y-3">
       <div className="space-y-3 p-3">
-        <div className="flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+        <div className="flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           <span>Input unit</span>
-          <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/80 p-0.5 dark:border-slate-600 dark:bg-slate-900/70">
+          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/80 p-0.5">
             <button
               type="button"
               onClick={() => handleDisplayUnitChange('days')}
               className={cn(
                 'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                 localSettings.displayUnit === 'days'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               Days
@@ -309,8 +310,8 @@ const PTOTab: React.FC = () => {
               className={cn(
                 'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                 localSettings.displayUnit === 'hours'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               Hours
@@ -320,7 +321,7 @@ const PTOTab: React.FC = () => {
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
-            <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Initial balance ({unitLabel})
             </Label>
             <Input
@@ -336,11 +337,11 @@ const PTOTab: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               As of date
             </Label>
             <div className="relative">
-              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="asOfDate"
                 name="asOfDate"
@@ -353,7 +354,7 @@ const PTOTab: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Accrual amount ({unitLabel})
             </Label>
             <Input
@@ -366,13 +367,13 @@ const PTOTab: React.FC = () => {
               onChange={handleChange}
               className="!h-8 px-2 py-1 text-xs"
             />
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            <p className="text-[10px] text-muted-foreground/70">
               Per {localSettings.accrualFrequency} period ({unitLabel})
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Accrual frequency
             </Label>
             <select
@@ -380,7 +381,7 @@ const PTOTab: React.FC = () => {
               name="accrualFrequency"
               value={localSettings.accrualFrequency}
               onChange={handleChange}
-              className="w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-rose-500"
+              className="w-full rounded-md border border-input bg-background py-1.5 px-2 text-xs text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-70"
             >
               {ACCRUAL_FREQUENCIES.map((freq) => (
                 <option key={freq.value} value={freq.value}>
@@ -390,33 +391,20 @@ const PTOTab: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
+          <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             <span>Advanced</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={localSettings.enableCarryoverLimit}
-              onClick={() => handleAdvancedToggle(!localSettings.enableCarryoverLimit)}
-              className={cn(
-                'relative inline-flex h-5 w-10 flex-shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-1 dark:focus-visible:ring-rose-500',
-                localSettings.enableCarryoverLimit
-                  ? 'border-emerald-500 bg-emerald-500'
-                  : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700'
-              )}
-            >
-              <span
-                className={cn(
-                  'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform transform',
-                  localSettings.enableCarryoverLimit ? 'translate-x-5' : 'translate-x-1'
-                )}
-              />
-            </button>
+            <Switch
+              checked={localSettings.enableCarryoverLimit}
+              onCheckedChange={handleAdvancedToggle}
+              aria-label="Toggle advanced PTO controls"
+              className="data-[state=checked]:border-primary-border border"
+            />
           </div>
 
           {localSettings.enableCarryoverLimit && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Max carryover ({unitLabel})
                 </Label>
                 <Input
@@ -432,7 +420,7 @@ const PTOTab: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="carryoverResetDate" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                <Label htmlFor="carryoverResetDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Rollover date
                 </Label>
                 <Input
@@ -446,7 +434,7 @@ const PTOTab: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="hoursPerDay" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                <Label htmlFor="hoursPerDay" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Hours per PTO day
                 </Label>
                 <Input
@@ -460,11 +448,11 @@ const PTOTab: React.FC = () => {
                   onChange={handleChange}
                   className="!h-8 px-2 py-1 text-xs"
                 />
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">Used when converting PTO days to hours</p>
+                <p className="text-[10px] text-muted-foreground/70">Used when converting PTO days to hours</p>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="hoursPerWeek" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                <Label htmlFor="hoursPerWeek" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Hours per week
                 </Label>
                 <Input
@@ -478,7 +466,7 @@ const PTOTab: React.FC = () => {
                   onChange={handleChange}
                   className="!h-8 px-2 py-1 text-xs"
                 />
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">Aligns PTO plans with non-standard schedules</p>
+                <p className="text-[10px] text-muted-foreground/70">Aligns PTO plans with non-standard schedules</p>
               </div>
             </>
           )}

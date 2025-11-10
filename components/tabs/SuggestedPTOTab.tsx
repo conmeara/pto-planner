@@ -5,6 +5,7 @@ import { BrainCircuit, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { usePlanner } from '@/contexts/PlannerContext';
 import type { StrategyType } from '@/types';
+import { cn } from '@/lib/utils';
 
 // Strategy configuration
 const STRATEGIES: Array<{
@@ -128,44 +129,47 @@ const SuggestedPTOTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {STRATEGIES.map((strategy) => (
-          <div
-            key={strategy.type}
-            className={`p-2 rounded-lg cursor-pointer transition-all border ${
-              currentStrategy === strategy.type
-                ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 ring-2 ring-amber-400 dark:ring-amber-600'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-amber-200 dark:hover:border-amber-800'
-            }`}
-            onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
-          >
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <div
-                  className={`p-0.5 rounded ${
-                    currentStrategy === strategy.type
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300'
-                  }`}
-                >
-                  {strategy.icon}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {STRATEGIES.map((strategy) => {
+          const isActive = currentStrategy === strategy.type;
+
+          return (
+            <button
+              key={strategy.type}
+              type="button"
+              onClick={() => !isOptimizing && handleSelectStrategy(strategy.type)}
+              className={cn(
+                'rounded-3xl border border-border bg-card p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isActive ? 'border-primary-border bg-primary/10' : 'hover:bg-muted/60'
+              )}
+            >
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      'inline-flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground',
+                      isActive && 'border-primary bg-primary text-primary-foreground'
+                    )}
+                  >
+                    {strategy.icon}
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground">{strategy.title}</h3>
+                  {isActive && suggestedDays.length > 0 && (
+                    <Badge className="ml-auto bg-primary text-primary-foreground">
+                      {suggestedDays.length}
+                    </Badge>
+                  )}
                 </div>
-                <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">{strategy.title}</h3>
-                {currentStrategy === strategy.type && suggestedDays.length > 0 && (
-                  <Badge className="bg-amber-500 text-white text-xs ml-auto">
-                    {suggestedDays.length}
-                  </Badge>
-                )}
+                <p className="text-xs text-muted-foreground leading-snug">{strategy.description}</p>
               </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 leading-tight">{strategy.description}</p>
-            </div>
-          </div>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {isOptimizing && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-500/10 dark:text-blue-200">
-          <BrainCircuit className="h-3.5 w-3.5 animate-spin" />
+        <div className="flex items-center gap-2 rounded-3xl border border-border bg-muted/70 px-3 py-2 text-xs text-muted-foreground">
+          <BrainCircuit className="h-3.5 w-3.5 animate-spin text-primary" />
           Crunching calendar data…
         </div>
       )}

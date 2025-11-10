@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+  <!-- Ghibli-style leaf -->
+  <path d="M20 5C20 5 8 12 8 22C8 28.6274 13.3726 34 20 34C26.6274 34 32 28.6274 32 22C32 12 20 5 20 5Z"
+        fill="oklch(0.71 0.097 111.7)"
+        opacity="0.3"/>
+  <path d="M20 5C20 5 8 12 8 22C8 28.6274 13.3726 34 20 34C26.6274 34 32 28.6274 32 22C32 12 20 5 20 5Z"
+        stroke="oklch(0.71 0.097 111.7)"
+        stroke-width="1.5"
+        opacity="0.6"/>
+  <!-- Leaf vein -->
+  <path d="M20 8L20 30"
+        stroke="oklch(0.71 0.097 111.7)"
+        stroke-width="1"
+        opacity="0.4"/>
+  <path d="M20 14L14 20"
+        stroke="oklch(0.71 0.097 111.7)"
+        stroke-width="0.8"
+        opacity="0.3"/>
+  <path d="M20 18L26 22"
+        stroke="oklch(0.71 0.097 111.7)"
+        stroke-width="0.8"
+        opacity="0.3"/>
+</svg>

@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { parseDateLocal } from '@/lib/date-utils';
 import type { CustomHoliday } from '@/types';
+import { cn } from '@/lib/utils';
 
 // Expanded country list (supports Nager.Date API)
 const COUNTRIES = [
@@ -172,30 +173,30 @@ const HolidaysTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-3 text-slate-800 dark:text-slate-100">
+    <div className="space-y-4 text-sm text-foreground">
 
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Country Selection */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label htmlFor="country" className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+            <Label htmlFor="country" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Country
             </Label>
             {isLoadingHolidays && (
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Loading holidays...</span>
+              <span className="text-[11px] text-muted-foreground">Loading holidays...</span>
             )}
           </div>
           <div className="relative">
-            <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-300" />
+            <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <select
               id="country"
               value={selectedCountry}
               onChange={(event) => handleCountryChange(event.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-400"
+              className="w-full rounded-2xl border border-border bg-card py-2 pl-8 pr-3 text-xs text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isLoadingHolidays}
             >
               {availableCountries.map((country) => (
-                <option key={country.code} value={country.code} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+                <option key={country.code} value={country.code}>
                   {country.name}
                 </option>
               ))}
@@ -206,9 +207,9 @@ const HolidaysTab: React.FC = () => {
         {/* Add Custom Holiday Form */}
         <form
           onSubmit={handleAddHoliday}
-          className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+          className="space-y-2 rounded-3xl border border-border bg-card px-4 py-3"
         >
-          <Label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-300">
+          <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Add Custom Holiday
           </Label>
           <div className="flex gap-2">
@@ -231,9 +232,9 @@ const HolidaysTab: React.FC = () => {
                 id="custom-holiday-repeats"
                 checked={customHolidayRepeats}
                 onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
-                className="border-slate-300 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500 dark:border-slate-600"
+                className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
               />
-              <Label htmlFor="custom-holiday-repeats" className="text-xs text-slate-600 dark:text-slate-300">
+              <Label htmlFor="custom-holiday-repeats" className="text-xs text-muted-foreground">
                 Yearly
               </Label>
             </div>
@@ -243,7 +244,7 @@ const HolidaysTab: React.FC = () => {
               disabled={
                 isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
               }
-              className="h-8 bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              className="h-8"
             >
               {isAddingHoliday ? 'Adding…' : 'Add'}
             </Button>
@@ -252,33 +253,33 @@ const HolidaysTab: React.FC = () => {
       </div>
 
       {successMessage && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-500/10 dark:text-emerald-300">
+        <div className="rounded-2xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-foreground">
           <p className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4" />
+            <CheckCircle className="h-4 w-4 text-primary" />
             {successMessage}
           </p>
         </div>
       )}
 
       {errorMessage && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-600 shadow-sm dark:border-rose-900/60 dark:bg-rose-500/10 dark:text-rose-300">
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
           {errorMessage}
         </div>
       )}
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-300">
+        <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
           <span>{holidays.length} holidays</span>
           <span className="uppercase">{selectedCountry}</span>
         </div>
 
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <div className="max-h-64 overflow-y-auto rounded-3xl border border-border bg-card">
           {sortedHolidays.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
               {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
             </div>
           ) : (
-            <div className="divide-y divide-slate-200 dark:divide-slate-700">
+            <div className="divide-y divide-border/60">
               {sortedHolidays.map((holiday, index) => {
                 const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
                 const isRemoving = removingId === key;
@@ -286,27 +287,32 @@ const HolidaysTab: React.FC = () => {
                 return (
                   <div
                     key={key}
-                    className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-                      index % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50/50 dark:bg-slate-900/20'
-                    }`}
+                    className={cn(
+                      'flex items-center justify-between gap-3 px-3 py-1.5 text-xs transition',
+                      index % 2 === 0 ? 'bg-card' : 'bg-muted/40',
+                      'hover:bg-muted/70'
+                    )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <span className="truncate font-medium text-slate-800 dark:text-slate-100">{holiday.name}</span>
-                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                      <span className="truncate font-medium text-foreground">{holiday.name}</span>
+                      <span className="shrink-0 text-muted-foreground">
                         {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
                       </span>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                        holiday.repeats_yearly
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                      }`}>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          holiday.repeats_yearly
+                            ? 'bg-primary/15 text-primary'
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                      >
                         {holiday.repeats_yearly ? 'Yearly' : 'Once'}
                       </span>
                     </div>
                     <button
                       onClick={() => handleRemoveHoliday(holiday)}
                       disabled={isRemoving || isLoadingHolidays}
-                      className="shrink-0 text-slate-400 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-rose-400"
+                      className="shrink-0 text-muted-foreground transition hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                       title="Delete holiday"
                     >
                       <Trash2 className={`h-3.5 w-3.5 ${isRemoving ? 'animate-spin' : ''}`} />
@@ -319,7 +325,7 @@ const HolidaysTab: React.FC = () => {
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+      <p className="text-[11px] text-muted-foreground">
         Official holidays are sourced from the Nager.Date public dataset. Changing your country will update the list for {new Date().getFullYear()}.
       </p>
     </div>
