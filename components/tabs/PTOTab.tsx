@@ -5,6 +5,14 @@ import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import { cn } from '@/lib/utils';
@@ -143,6 +151,13 @@ const PTOTab: React.FC = () => {
     });
   };
 
+  const handleAccrualFrequencyChange = (value: string) => {
+    setLocalSettings({
+      ...localSettings,
+      accrualFrequency: value as 'weekly' | 'biweekly' | 'monthly' | 'yearly'
+    });
+  };
+
   const handleDisplayUnitChange = (nextUnit: 'days' | 'hours') => {
     setLocalSettings((prev) => {
       if (nextUnit === prev.displayUnit) {
@@ -276,6 +291,7 @@ const PTOTab: React.FC = () => {
   }, [
     localSettings.initialBalance,
     localSettings.asOfDate,
+    localSettings.accrualFrequency,
     localSettings.maxCarryover,
     localSettings.enableCarryoverLimit,
     localSettings.carryoverResetDate,
@@ -291,32 +307,30 @@ const PTOTab: React.FC = () => {
       <div className="space-y-3 p-3">
         <div className="flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           <span>Input unit</span>
-          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/80 p-0.5">
-            <button
-              type="button"
-              onClick={() => handleDisplayUnitChange('days')}
-              className={cn(
-                'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
-                localSettings.displayUnit === 'days'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
+          <ToggleGroup
+            type="single"
+            value={localSettings.displayUnit}
+            onValueChange={(value) => {
+              if (value) handleDisplayUnitChange(value as 'days' | 'hours');
+            }}
+            variant="outline"
+            size="sm"
+          >
+            <ToggleGroupItem
+              value="days"
+              aria-label="Toggle days"
+              className="text-[11px] font-semibold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
             >
               Days
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDisplayUnitChange('hours')}
-              className={cn(
-                'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors',
-                localSettings.displayUnit === 'hours'
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="hours"
+              aria-label="Toggle hours"
+              className="text-[11px] font-semibold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
             >
               Hours
-            </button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -376,19 +390,21 @@ const PTOTab: React.FC = () => {
             <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Accrual frequency
             </Label>
-            <select
-              id="accrualFrequency"
-              name="accrualFrequency"
+            <Select
               value={localSettings.accrualFrequency}
-              onChange={handleChange}
-              className="w-full rounded-md border border-input bg-background py-1.5 px-2 text-xs text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-70"
+              onValueChange={handleAccrualFrequencyChange}
             >
-              {ACCRUAL_FREQUENCIES.map((freq) => (
-                <option key={freq.value} value={freq.value}>
-                  {freq.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="!h-8 w-full text-xs" size="sm">
+                <SelectValue placeholder="Select frequency" />
+              </SelectTrigger>
+              <SelectContent>
+                {ACCRUAL_FREQUENCIES.map((freq) => (
+                  <SelectItem key={freq.value} value={freq.value}>
+                    {freq.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -397,7 +413,6 @@ const PTOTab: React.FC = () => {
               checked={localSettings.enableCarryoverLimit}
               onCheckedChange={handleAdvancedToggle}
               aria-label="Toggle advanced PTO controls"
-              className="data-[state=checked]:border-primary-border border"
             />
           </div>
 

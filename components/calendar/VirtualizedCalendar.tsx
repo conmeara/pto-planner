@@ -358,7 +358,7 @@ const VirtualizedCalendar: React.FC = () => {
   if (!isMounted) {
     return (
       <div className="mx-auto w-full max-w-7xl px-0">
-        <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card p-6">
+        <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card shadow-sm p-6">
           <div className="flex h-80 items-center justify-center">
             <p className="text-sm text-muted-foreground">Loading calendar...</p>
           </div>
@@ -369,7 +369,7 @@ const VirtualizedCalendar: React.FC = () => {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-0">
-      <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card">
+      <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card shadow-sm">
         <div className="px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm font-medium text-muted-foreground">
