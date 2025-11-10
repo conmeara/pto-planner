@@ -32,20 +32,20 @@ const PTOBalanceCard: React.FC = () => {
 
   // Determine color based on balance
   const getBalanceColor = () => {
-    if (remainingBalance < 0) return 'text-red-600 dark:text-red-400';
-    if (remainingBalance < initialBalance * 0.2) return 'text-orange-600 dark:text-orange-400';
-    return 'text-green-600 dark:text-green-400';
+    if (remainingBalance < 0) return 'text-destructive';
+    if (remainingBalance < initialBalance * 0.2) return 'text-suggested-foreground';
+    return 'text-primary';
   };
 
   // Format display unit
   const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
 
   return (
-    <Card className="border border-gray-200/70 bg-white/85 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-900/70">
+    <Card className="border border-border bg-card/85 shadow-sm backdrop-blur">
       <div className="p-3">
         <div className="mb-2 flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+          <Calendar className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold text-foreground">
             PTO Balance
           </h3>
         </div>
@@ -53,45 +53,45 @@ const PTOBalanceCard: React.FC = () => {
         <div className="space-y-2">
           {/* Initial Balance */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-600 dark:text-gray-400">Initial Balance</span>
-            <span className="text-xs font-medium text-gray-900 dark:text-white">
+            <span className="text-xs text-muted-foreground">Initial Balance</span>
+            <span className="text-xs font-medium text-foreground">
               {initialBalance} {displayUnit}
             </span>
           </div>
 
           {/* Divider */}
-          <div className="border-t border-gray-200 dark:border-gray-700" />
+          <div className="border-t border-border" />
 
           {/* Days Selected */}
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <TrendingDown className="h-3 w-3" />
               Days Selected
             </span>
-            <span className="text-xs font-medium text-gray-900 dark:text-white">
+            <span className="text-xs font-medium text-foreground">
               {daysSelected} {displayUnit}
             </span>
           </div>
 
           {/* Suggested Days (if any) */}
           {hasSuggestions && (
-            <div className="-mx-1 flex items-center justify-between rounded bg-yellow-50 px-2 py-1 text-yellow-700 dark:bg-yellow-900/25 dark:text-yellow-300">
+            <div className="-mx-1 flex items-center justify-between rounded bg-suggested px-2 py-1 text-suggested-foreground">
               <span className="flex items-center gap-1 text-xs">
                 <TrendingUp className="h-3 w-3" />
                 Suggested Days
               </span>
-              <span className="text-xs font-medium text-yellow-800 dark:text-yellow-200">
+              <span className="text-xs font-medium">
                 {suggestedCount} {displayUnit}
               </span>
             </div>
           )}
 
           {/* Divider */}
-          <div className="border-t border-gray-200 dark:border-gray-700" />
+          <div className="border-t border-border" />
 
           {/* Remaining Balance */}
           <div className="flex items-end justify-between pt-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Remaining
             </span>
             <span className={`text-lg font-bold ${getBalanceColor()}`}>
@@ -101,14 +101,14 @@ const PTOBalanceCard: React.FC = () => {
 
           {/* Warning if overbooked */}
           {remainingBalance < 0 && (
-            <div className="rounded bg-red-50 p-2 text-[11px] text-red-700 dark:bg-red-900/25 dark:text-red-300">
+            <div className="rounded bg-destructive/10 p-2 text-[11px] text-destructive">
               ⚠️ You've selected more PTO than available
             </div>
           )}
 
           {/* Low balance warning */}
           {remainingBalance >= 0 && remainingBalance < initialBalance * 0.2 && (
-            <div className="rounded bg-orange-50 p-2 text-[11px] text-orange-700 dark:bg-orange-900/25 dark:text-orange-300">
+            <div className="rounded bg-suggested/20 p-2 text-[11px] text-suggested-foreground">
               💡 You're running low on PTO
             </div>
           )}

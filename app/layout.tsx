@@ -1,4 +1,4 @@
-import { Geist } from "next/font/google";
+import { Nunito, PT_Serif, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
@@ -12,9 +12,25 @@ export const metadata = {
   description: "A tool to help you plan and optimize your PTO days throughout the year",
 };
 
-const geistSans = Geist({
+const nunito = Nunito({
   display: "swap",
   subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-nunito",
+});
+
+const ptSerif = PT_Serif({
+  display: "swap",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-pt-serif",
+});
+
+const geistMono = Geist_Mono({
+  display: "swap",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-geist-mono",
 });
 
 export default function RootLayout({
@@ -23,12 +39,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={geistSans.className} suppressHydrationWarning>
-      <body className="bg-background text-foreground">
+    <html
+      lang="en"
+      className={`${nunito.variable} ${ptSerif.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="relative antialiased">
+        <div className="texture" aria-hidden="true" />
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
           disableTransitionOnChange
         >
           <main className="min-h-screen flex flex-col items-center">

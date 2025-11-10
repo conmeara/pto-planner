@@ -69,16 +69,15 @@ const isToday = (date: Date) => {
 
 const getDayClasses = (type: DayType) => {
   const baseClasses =
-    'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full cursor-pointer text-xs';
+    'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors';
 
   const typeClasses = {
-    [DayType.NORMAL]: 'hover:bg-gray-200 dark:hover:bg-gray-700',
-    [DayType.WEEKEND]: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-    [DayType.PUBLIC_HOLIDAY]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    [DayType.SELECTED_PTO]: 'bg-green-500 text-white',
-    [DayType.SUGGESTED_PTO]:
-      'bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200',
-    [DayType.TODAY]: 'ring-2 ring-blue-500 font-bold',
+    [DayType.NORMAL]: 'hover:bg-muted/80',
+    [DayType.WEEKEND]: 'bg-muted text-muted-foreground',
+    [DayType.PUBLIC_HOLIDAY]: 'bg-holiday text-holiday-foreground',
+    [DayType.SELECTED_PTO]: 'bg-primary text-primary-foreground',
+    [DayType.SUGGESTED_PTO]: 'bg-suggested text-suggested-foreground',
+    [DayType.TODAY]: 'ring-2 ring-primary text-foreground',
   } satisfies Record<DayType, string>;
 
   return cn(baseClasses, typeClasses[type]);
@@ -135,18 +134,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
   );
 
   const badgeClass =
-    balanceAtStart < 0
-      ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-200'
-      : balanceAtStart === 0
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200'
-      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200';
+    'rounded-full border border-border/70 bg-card px-2 py-0.5 text-[11px] font-semibold text-muted-foreground';
 
+  const progressTrackClass = 'bg-muted/60';
   const progressColor =
-    progressPercent <= 20
-      ? 'bg-red-500/80 dark:bg-red-400/80'
-      : progressPercent <= 50
-      ? 'bg-amber-500/80 dark:bg-amber-400/80'
-      : 'bg-emerald-500/80 dark:bg-emerald-400/80';
+    balanceAtStart < 0 ? 'bg-destructive' : 'bg-primary';
 
   const monthTooltip = useMemo(() => {
     const lines = [
@@ -270,17 +262,12 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
     <div className={cn('mb-6', className)}>
       <div className="mb-3" title={monthTooltip}>
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold">{MONTH_NAMES[monthIndex]}</h3>
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-[11px] font-semibold',
-              badgeClass,
-            )}
-          >
+          <h3 className="font-serif text-lg text-foreground">{MONTH_NAMES[monthIndex]}</h3>
+          <span className={badgeClass}>
             {formatAmount(balanceAtStart)} {unitLabel}
           </span>
         </div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800/70">
+        <div className={cn('mt-2 h-1 overflow-hidden rounded-full', progressTrackClass)}>
           <div
             className={cn('h-full rounded-full transition-all', progressColor)}
             style={{ width: `${progressPercent}%` }}
@@ -297,7 +284,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         {DAYS_OF_WEEK.map((dayLabel) => (
           <div
             key={dayLabel}
-            className="text-xs text-center font-medium text-gray-500"
+            className="text-xs text-center font-medium text-muted-foreground"
           >
             {dayLabel}
           </div>
@@ -309,5 +296,3 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 };
 
 export default MonthCard;
-
-
