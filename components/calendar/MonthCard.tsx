@@ -27,7 +27,6 @@ export enum DayType {
   PUBLIC_HOLIDAY = 'public-holiday',
   SELECTED_PTO = 'selected-pto',
   SUGGESTED_PTO = 'suggested-pto',
-  TODAY = 'today',
 }
 
 const addDays = (date: Date, days: number) => {
@@ -67,7 +66,9 @@ const isToday = (date: Date) => {
   );
 };
 
-const getDayClasses = (type: DayType) => {
+const getDayClasses = (type: DayType, options: { isToday?: boolean } = {}) => {
+  const { isToday = false } = options;
+
   const baseClasses =
     'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors';
 
@@ -77,10 +78,9 @@ const getDayClasses = (type: DayType) => {
     [DayType.PUBLIC_HOLIDAY]: 'bg-holiday text-holiday-foreground',
     [DayType.SELECTED_PTO]: 'bg-primary text-primary-foreground',
     [DayType.SUGGESTED_PTO]: 'bg-suggested text-suggested-foreground',
-    [DayType.TODAY]: 'ring-2 ring-primary text-foreground',
   } satisfies Record<DayType, string>;
 
-  return cn(baseClasses, typeClasses[type]);
+  return cn(baseClasses, typeClasses[type], isToday && 'ring-2 ring-primary');
 };
 
 export interface MonthCardProps {
@@ -207,9 +207,9 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         );
       }
 
-      const dayType = isToday(date)
-        ? DayType.TODAY
-        : isDateSelected(date)
+      const isCurrentDay = isToday(date);
+
+      const dayType = isDateSelected(date)
         ? DayType.SELECTED_PTO
         : isDateSuggested(date)
         ? DayType.SUGGESTED_PTO
@@ -222,7 +222,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
       result.push(
         <div
           key={`day-${day}`}
-          className={getDayClasses(dayType)}
+          className={getDayClasses(dayType, { isToday: isCurrentDay })}
           onClick={() => onDayClick(date)}
           title={dayTooltipLines.join('\n')}
           aria-label={dayTooltipLines.join('. ')}

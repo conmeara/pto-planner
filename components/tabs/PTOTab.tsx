@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, useCallback, useRef } from 'react';
 import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Select,
   SelectContent,
@@ -15,8 +14,8 @@ import {
 } from '@/components/ui/select';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
-import { cn } from '@/lib/utils';
 import { formatDateLocal } from '@/lib/date-utils';
+import { usePanelHeaderActions } from '@/components/panel-header-context';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -27,6 +26,35 @@ const ACCRUAL_FREQUENCIES = [
 
 const DEFAULT_HOURS_PER_DAY = 8;
 const DEFAULT_HOURS_PER_WEEK = 40;
+
+interface UnitBadgeProps {
+  unit: 'days' | 'hours';
+  onToggle?: () => void;
+  labelOverride?: string;
+}
+
+const UnitBadge: React.FC<UnitBadgeProps> = ({ unit, onToggle, labelOverride }) => {
+  const label = labelOverride ?? (unit === 'days' ? 'Days' : 'Hours');
+  const sharedClasses =
+    'absolute inset-y-[3px] right-[3px] flex items-center rounded-md bg-muted px-2 text-[11px] font-semibold uppercase transition-colors';
+
+  if (onToggle) {
+    const nextUnit = unit === 'days' ? 'hours' : 'days';
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`${sharedClasses} text-muted-foreground hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+        aria-label={`Switch to ${nextUnit}`}
+        title={`Switch to ${nextUnit}`}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  return <span className={`${sharedClasses} pointer-events-none cursor-default text-muted-foreground`}>{label}</span>;
+};
 
 const hasCustomHourSettings = (hoursPerDay: number, hoursPerWeek: number): boolean => {
   const differsFrom = (value: number, baseline: number) => Math.abs(value - baseline) > 0.001;
@@ -79,6 +107,14 @@ interface LocalPTOSettings {
   hoursPerWeek: number;
 }
 
+type FieldUnit = 'days' | 'hours';
+
+interface FieldUnits {
+  initialBalance: FieldUnit;
+  accrualAmount: FieldUnit;
+  maxCarryover: FieldUnit;
+}
+
 const PTOTab: React.FC = () => {
   const { plannerData, setPlannerData, isAuthenticated, getSettings, saveLocalSettings } = usePlanner();
   const [isPending, startTransition] = useTransition();
@@ -107,8 +143,18 @@ const PTOTab: React.FC = () => {
       hoursPerWeek,
     };
   });
+  const [fieldUnits, setFieldUnits] = useState<FieldUnits>(() => {
+    const settings = getSettings();
+    const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
+    return {
+      initialBalance: displayUnit,
+      accrualAmount: displayUnit,
+      maxCarryover: displayUnit,
+    };
+  });
+  const lastDisplayUnitRef = useRef<FieldUnit>(localSettings.displayUnit);
 
-  const unitLabel = localSettings.displayUnit === 'hours' ? 'hours' : 'days';
+  const headerActions = usePanelHeaderActions();
 
   // Update local settings when planner data changes
   useEffect(() => {
@@ -142,7 +188,7 @@ const PTOTab: React.FC = () => {
 
     // Convert numeric fields to numbers
     let parsedValue: string | number = value;
-    if (['initialBalance', 'accrualAmount', 'maxCarryover', 'hoursPerDay', 'hoursPerWeek'].includes(name)) {
+    if (['hoursPerDay', 'hoursPerWeek'].includes(name)) {
       parsedValue = parseFloat(value) || 0;
     }
 
@@ -152,32 +198,72 @@ const PTOTab: React.FC = () => {
     });
   };
 
-  const handleAccrualFrequencyChange = (value: string) => {
-    setLocalSettings({
-      ...localSettings,
-      accrualFrequency: value as 'weekly' | 'biweekly' | 'monthly' | 'yearly'
-    });
-  };
+  const handleNumericChangeWithUnit = useCallback(
+    (field: keyof Pick<LocalPTOSettings, 'initialBalance' | 'accrualAmount' | 'maxCarryover'>, value: string) => {
+      const parsed = parseFloat(value);
+      const numericValue = Number.isFinite(parsed) ? parsed : 0;
+      const sourceUnit = fieldUnits[field];
+      const baseUnit = localSettings.displayUnit;
+      const hoursPerDay = localSettings.hoursPerDay > 0 ? localSettings.hoursPerDay : DEFAULT_HOURS_PER_DAY;
+      const converted = convertBetweenUnits(numericValue, sourceUnit, baseUnit, hoursPerDay);
 
-  const handleDisplayUnitChange = (nextUnit: 'days' | 'hours') => {
-    setLocalSettings((prev) => {
-      if (nextUnit === prev.displayUnit) {
-        return prev;
+      setLocalSettings((prev) => ({
+        ...prev,
+        [field]: converted,
+      }));
+    },
+    [fieldUnits, localSettings.displayUnit, localSettings.hoursPerDay]
+  );
+
+  const toggleFieldUnit = useCallback((field: keyof FieldUnits) => {
+    setFieldUnits((prevUnits) => {
+      const nextUnit: FieldUnit = prevUnits[field] === 'days' ? 'hours' : 'days';
+
+      if (field === 'initialBalance') {
+        setLocalSettings((prevSettings) => {
+          const hoursPerDay = prevSettings.hoursPerDay > 0 ? prevSettings.hoursPerDay : DEFAULT_HOURS_PER_DAY;
+
+          return {
+            ...prevSettings,
+            displayUnit: nextUnit,
+            initialBalance: convertBetweenUnits(
+              prevSettings.initialBalance,
+              prevSettings.displayUnit,
+              nextUnit,
+              hoursPerDay
+            ),
+            accrualAmount: convertBetweenUnits(
+              prevSettings.accrualAmount,
+              prevSettings.displayUnit,
+              nextUnit,
+              hoursPerDay
+            ),
+            maxCarryover: convertBetweenUnits(
+              prevSettings.maxCarryover,
+              prevSettings.displayUnit,
+              nextUnit,
+              hoursPerDay
+            ),
+          };
+        });
+        lastDisplayUnitRef.current = nextUnit;
       }
 
-      const hoursPerDay = prev.hoursPerDay > 0 ? prev.hoursPerDay : 8;
-
       return {
-        ...prev,
-        displayUnit: nextUnit,
-        initialBalance: convertBetweenUnits(prev.initialBalance, prev.displayUnit, nextUnit, hoursPerDay),
-        accrualAmount: convertBetweenUnits(prev.accrualAmount, prev.displayUnit, nextUnit, hoursPerDay),
-        maxCarryover: convertBetweenUnits(prev.maxCarryover, prev.displayUnit, nextUnit, hoursPerDay),
+        ...prevUnits,
+        [field]: nextUnit,
       };
     });
-  };
+  }, []);
 
-  const handleAdvancedToggle = (checked: boolean) => {
+  const handleAccrualFrequencyChange = useCallback((value: string) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      accrualFrequency: value as 'weekly' | 'biweekly' | 'monthly' | 'yearly',
+    }));
+  }, []);
+
+  const handleAdvancedToggle = useCallback((checked: boolean) => {
     setLocalSettings((prev) => {
       if (checked) {
         return {
@@ -194,7 +280,42 @@ const PTOTab: React.FC = () => {
         hoursPerWeek: DEFAULT_HOURS_PER_WEEK,
       };
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!headerActions) {
+      return;
+    }
+
+    headerActions.setHeaderActions(
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span>Advanced</span>
+        <Switch
+          checked={localSettings.enableCarryoverLimit}
+          onCheckedChange={handleAdvancedToggle}
+          aria-label="Toggle advanced PTO controls"
+        />
+      </div>
+    );
+
+    return () => {
+      headerActions.setHeaderActions(null);
+    };
+  }, [headerActions, localSettings.enableCarryoverLimit, handleAdvancedToggle]);
+
+  useEffect(() => {
+    const previous = lastDisplayUnitRef.current;
+    const next = localSettings.displayUnit;
+
+    if (previous !== next) {
+      setFieldUnits((prevUnits) => ({
+        initialBalance: prevUnits.initialBalance === previous ? next : prevUnits.initialBalance,
+        accrualAmount: prevUnits.accrualAmount === previous ? next : prevUnits.accrualAmount,
+        maxCarryover: prevUnits.maxCarryover === previous ? next : prevUnits.maxCarryover,
+      }));
+      lastDisplayUnitRef.current = next;
+    }
+  }, [localSettings.displayUnit]);
 
   // Save settings (to localStorage or database)
   const handleSave = React.useCallback(async () => {
@@ -303,156 +424,158 @@ const PTOTab: React.FC = () => {
     handleSave,
   ]);
 
-  return (
-    <div className="space-y-3">
-      <div className="space-y-3 p-3">
-        <div className="flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          <span>Input unit</span>
-          <ToggleGroup
-            type="single"
-            value={localSettings.displayUnit}
-            onValueChange={(value) => {
-              if (value) handleDisplayUnitChange(value as 'days' | 'hours');
-            }}
-            variant="outline"
-            size="sm"
-          >
-            <ToggleGroupItem
-              value="days"
-              aria-label="Toggle days"
-              className="text-[11px] font-semibold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-            >
-              Days
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="hours"
-              aria-label="Toggle hours"
-              className="text-[11px] font-semibold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-            >
-              Hours
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
+  const accrualFrequencyLabel =
+    ACCRUAL_FREQUENCIES.find((freq) => freq.value === localSettings.accrualFrequency)?.label ?? 'Monthly';
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Initial balance ({unitLabel})
-            </Label>
+  const hoursPerDayForDisplay =
+    localSettings.hoursPerDay && localSettings.hoursPerDay > 0 ? localSettings.hoursPerDay : DEFAULT_HOURS_PER_DAY;
+
+  const displayValues = {
+    initialBalance: convertBetweenUnits(
+      localSettings.initialBalance,
+      localSettings.displayUnit,
+      fieldUnits.initialBalance,
+      hoursPerDayForDisplay
+    ),
+    accrualAmount: convertBetweenUnits(
+      localSettings.accrualAmount,
+      localSettings.displayUnit,
+      fieldUnits.accrualAmount,
+      hoursPerDayForDisplay
+    ),
+    maxCarryover: convertBetweenUnits(
+      localSettings.maxCarryover,
+      localSettings.displayUnit,
+      fieldUnits.maxCarryover,
+      hoursPerDayForDisplay
+    ),
+  };
+
+  const accrualUnitLabel = fieldUnits.accrualAmount === 'hours' ? 'hours' : 'days';
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Initial balance
+          </Label>
+          <div className="relative">
             <Input
               id="initialBalance"
               name="initialBalance"
               type="number"
               min="0"
               step="0.5"
-              value={localSettings.initialBalance}
+              value={displayValues.initialBalance}
+              onChange={(event) => handleNumericChangeWithUnit('initialBalance', event.target.value)}
+              className="!h-9 pr-16 text-xs"
+            />
+            <UnitBadge unit={fieldUnits.initialBalance} onToggle={() => toggleFieldUnit('initialBalance')} />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            As of date
+          </Label>
+          <div className="relative">
+            <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="asOfDate"
+              name="asOfDate"
+              type="date"
+              value={localSettings.asOfDate}
               onChange={handleChange}
-              className="!h-8 px-2 py-1 text-xs"
+              className="!h-9 pl-9 pr-3 text-xs"
             />
           </div>
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="asOfDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              As of date
-            </Label>
-            <div className="relative">
-              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="asOfDate"
-                name="asOfDate"
-                type="date"
-                value={localSettings.asOfDate}
-                onChange={handleChange}
-                className="!h-8 pl-8 pr-2 text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Accrual amount ({unitLabel})
-            </Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="accrualAmount" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Accrual amount
+          </Label>
+          <div className="relative">
             <Input
               id="accrualAmount"
               name="accrualAmount"
               type="number"
               min="0"
               step="0.5"
-              value={localSettings.accrualAmount}
-              onChange={handleChange}
-              className="!h-8 px-2 py-1 text-xs"
+              value={displayValues.accrualAmount}
+              onChange={(event) => handleNumericChangeWithUnit('accrualAmount', event.target.value)}
+              className="!h-9 pr-16 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground/70">
-              Per {localSettings.accrualFrequency} period ({unitLabel})
-            </p>
+            <UnitBadge unit={fieldUnits.accrualAmount} onToggle={() => toggleFieldUnit('accrualAmount')} />
           </div>
+          <p className="text-[10px] text-muted-foreground/70">
+            Per {accrualFrequencyLabel.toLowerCase()} period ({accrualUnitLabel})
+          </p>
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Accrual frequency
-            </Label>
-            <Select
-              value={localSettings.accrualFrequency}
-              onValueChange={handleAccrualFrequencyChange}
-            >
-              <SelectTrigger className="!h-8 w-full text-xs" size="sm">
-                <SelectValue placeholder="Select frequency" />
-              </SelectTrigger>
-              <SelectContent>
-                {ACCRUAL_FREQUENCIES.map((freq) => (
-                  <SelectItem key={freq.value} value={freq.value}>
-                    {freq.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="accrualFrequency" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Accrual frequency
+          </Label>
+          <Select value={localSettings.accrualFrequency} onValueChange={handleAccrualFrequencyChange}>
+            <SelectTrigger className="!h-9 w-full text-xs" size="sm">
+              <SelectValue placeholder="Select frequency" />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCRUAL_FREQUENCIES.map((freq) => (
+                <SelectItem key={freq.value} value={freq.value}>
+                  {freq.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-          <div className="flex h-full items-center justify-end gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            <span>Advanced</span>
-            <Switch
-              checked={localSettings.enableCarryoverLimit}
-              onCheckedChange={handleAdvancedToggle}
-              aria-label="Toggle advanced PTO controls"
-            />
-          </div>
+      {localSettings.enableCarryoverLimit && (
+        <div className="space-y-4 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Advanced options</p>
 
-          {localSettings.enableCarryoverLimit && (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Max carryover ({unitLabel})
-                </Label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="maxCarryover" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Max carryover
+              </Label>
+              <div className="relative">
                 <Input
                   id="maxCarryover"
                   name="maxCarryover"
                   type="number"
                   min="0"
                   step="0.5"
-                  value={localSettings.maxCarryover}
-                  onChange={handleChange}
-                  className="!h-8 px-2 py-1 text-xs"
+                  value={displayValues.maxCarryover}
+                  onChange={(event) => handleNumericChangeWithUnit('maxCarryover', event.target.value)}
+                  className="!h-9 pr-16 text-xs"
                 />
+                <UnitBadge unit={fieldUnits.maxCarryover} onToggle={() => toggleFieldUnit('maxCarryover')} />
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="carryoverResetDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Rollover date
-                </Label>
-                <Input
-                  id="carryoverResetDate"
-                  name="carryoverResetDate"
-                  type="date"
-                  value={localSettings.carryoverResetDate}
-                  onChange={handleChange}
-                  className="!h-8 px-2 py-1 text-xs"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="carryoverResetDate" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Rollover date
+              </Label>
+              <Input
+                id="carryoverResetDate"
+                name="carryoverResetDate"
+                type="date"
+                value={localSettings.carryoverResetDate}
+                onChange={handleChange}
+                className="!h-9 pr-3 text-xs"
+              />
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="hoursPerDay" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Hours per PTO day
-                </Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="hoursPerDay" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Hours per PTO day
+              </Label>
+              <div className="relative">
                 <Input
                   id="hoursPerDay"
                   name="hoursPerDay"
@@ -462,15 +585,18 @@ const PTOTab: React.FC = () => {
                   step="0.25"
                   value={localSettings.hoursPerDay}
                   onChange={handleChange}
-                  className="!h-8 px-2 py-1 text-xs"
+                  className="!h-9 pr-16 text-xs"
                 />
-                <p className="text-[10px] text-muted-foreground/70">Used when converting PTO days to hours</p>
+                <UnitBadge unit="hours" labelOverride="Hours" />
               </div>
+              <p className="text-[10px] text-muted-foreground/70">Used when converting PTO days to hours</p>
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="hoursPerWeek" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Hours per week
-                </Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="hoursPerWeek" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Hours per week
+              </Label>
+              <div className="relative">
                 <Input
                   id="hoursPerWeek"
                   name="hoursPerWeek"
@@ -480,14 +606,15 @@ const PTOTab: React.FC = () => {
                   step="0.5"
                   value={localSettings.hoursPerWeek}
                   onChange={handleChange}
-                  className="!h-8 px-2 py-1 text-xs"
+                  className="!h-9 pr-16 text-xs"
                 />
-                <p className="text-[10px] text-muted-foreground/70">Aligns PTO plans with non-standard schedules</p>
+                <UnitBadge unit="hours" labelOverride="Hours" />
               </div>
-            </>
-          )}
+              <p className="text-[10px] text-muted-foreground/70">Aligns PTO plans with non-standard schedules</p>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

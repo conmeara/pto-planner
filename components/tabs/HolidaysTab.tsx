@@ -52,7 +52,7 @@ const HolidaysTab: React.FC = () => {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [customHolidayName, setCustomHolidayName] = useState('');
   const [customHolidayDate, setCustomHolidayDate] = useState('');
-  const [customHolidayRepeats, setCustomHolidayRepeats] = useState(true);
+  const [customHolidayRepeats, setCustomHolidayRepeats] = useState(false);
   const [isAddingHoliday, setIsAddingHoliday] = useState(false);
 
   const holidays = getHolidays();
@@ -247,7 +247,7 @@ const HolidaysTab: React.FC = () => {
     setSuccessMessage(`Added ${trimmedName}`);
     setCustomHolidayName('');
     setCustomHolidayDate('');
-    setCustomHolidayRepeats(true);
+    setCustomHolidayRepeats(false);
   };
 
   const formatTabLabel = (key: string) => key;
@@ -256,19 +256,18 @@ const HolidaysTab: React.FC = () => {
 
   return (
     <div className="space-y-4 text-sm text-foreground">
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        {/* Country Selection */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="country" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Country
-            </Label>
-            {isLoadingHolidays && (
-              <span className="text-[11px] text-muted-foreground">Loading holidays...</span>
-            )}
-          </div>
-          <div className="relative">
+      {/* Country Selection */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="country" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Country
+          </Label>
+          {isLoadingHolidays && (
+            <span className="text-[11px] text-muted-foreground">Loading holidays...</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
             <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <select
               id="country"
@@ -284,54 +283,27 @@ const HolidaysTab: React.FC = () => {
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Add Custom Holiday Form */}
-        <form
-          onSubmit={handleAddHoliday}
-          className="space-y-2 rounded-3xl border border-border bg-card px-4 py-3"
-        >
-          <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Add Custom Holiday
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              id="custom-holiday-name"
-              value={customHolidayName}
-              onChange={(event) => setCustomHolidayName(event.target.value)}
-              placeholder="Holiday name"
-              className="!h-8 flex-1 px-2 py-1 text-xs"
-            />
-            <Input
-              id="custom-holiday-date"
-              type="date"
-              value={customHolidayDate}
-              onChange={(event) => setCustomHolidayDate(event.target.value)}
-              className="!h-8 w-32 px-2 py-1 text-xs"
-            />
-            <div className="flex items-center gap-1.5">
-              <Checkbox
-                id="custom-holiday-repeats"
-                checked={customHolidayRepeats}
-                onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
-                className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-              />
-              <Label htmlFor="custom-holiday-repeats" className="text-xs text-muted-foreground">
-                Yearly
-              </Label>
-            </div>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={
-                isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
-              }
-              className="h-8"
-            >
-              {isAddingHoliday ? 'Adding…' : 'Add'}
-            </Button>
+          <div className="flex flex-wrap gap-1.5">
+            {yearTabs.map((tabKey) => {
+              const isActive = tabKey === activeYear;
+              return (
+                <button
+                  type="button"
+                  key={tabKey}
+                  onClick={() => setActiveYear(tabKey)}
+                  className={cn(
+                    'rounded-2xl border px-2.5 py-1 text-[11px] font-medium transition',
+                    isActive
+                      ? 'border-primary bg-primary/15 text-primary'
+                      : 'border-transparent bg-muted text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {formatTabLabel(tabKey)}
+                </button>
+              );
+            })}
           </div>
-        </form>
+        </div>
       </div>
 
       {successMessage && (
@@ -350,44 +322,68 @@ const HolidaysTab: React.FC = () => {
       )}
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>{activeHolidays.length} holidays</span>
-          <span className="uppercase">{activeYearLabel}</span>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {yearTabs.map((tabKey) => {
-            const isActive = tabKey === activeYear;
-            return (
-              <button
-                type="button"
-                key={tabKey}
-                onClick={() => setActiveYear(tabKey)}
-                className={cn(
-                  'rounded-2xl border px-2.5 py-1 text-[11px] font-medium transition',
-                  isActive
-                    ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-transparent bg-muted text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {formatTabLabel(tabKey)}
-              </button>
-            );
-          })}
-        </div>
-
         <div className="max-h-64 overflow-y-auto rounded-3xl border border-border bg-card">
-          {!hasLoadedAny ? (
-            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-              {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
-            </div>
-          ) : activeHolidays.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-              No holidays for {activeYearLabel}.
-            </div>
-          ) : (
-            <div className="divide-y divide-border/60">
-              {activeHolidays.map((holiday, index) => {
+          <div className="divide-y divide-border/60">
+            <form
+              onSubmit={handleAddHoliday}
+              className="flex items-center justify-between gap-3 bg-card px-3 py-1 text-[11px] transition hover:bg-muted/60"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Label htmlFor="custom-holiday-name" className="sr-only">
+                  Holiday name
+                </Label>
+                <Input
+                  id="custom-holiday-name"
+                  value={customHolidayName}
+                  onChange={(event) => setCustomHolidayName(event.target.value)}
+                  placeholder="Add custom holiday"
+                  className="!h-7 !text-[11px] !rounded-none !border-none w-full min-w-0 flex-1 border-b border-border/40 bg-transparent px-0 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
+                />
+                <div className="w-32 shrink-0">
+                  <Label htmlFor="custom-holiday-date" className="sr-only">
+                    Holiday date
+                  </Label>
+                  <Input
+                    id="custom-holiday-date"
+                    type="date"
+                    value={customHolidayDate}
+                    onChange={(event) => setCustomHolidayDate(event.target.value)}
+                    className="!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 text-muted-foreground !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
+                  />
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Checkbox
+                    id="custom-holiday-repeats"
+                    checked={customHolidayRepeats}
+                    onCheckedChange={(checked) => setCustomHolidayRepeats(checked === true)}
+                    className="data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                  />
+                  <Label htmlFor="custom-holiday-repeats" className="text-[11px] text-muted-foreground">
+                    Yearly
+                  </Label>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={
+                  isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
+                }
+                className="h-7 shrink-0 px-3 text-[11px]"
+              >
+                {isAddingHoliday ? 'Adding…' : 'Add'}
+              </Button>
+            </form>
+            {!hasLoadedAny ? (
+              <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                {isLoadingHolidays ? 'Loading holidays...' : 'Select a country to load holidays'}
+              </div>
+            ) : activeHolidays.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                No holidays for {activeYearLabel}.
+              </div>
+            ) : (
+              activeHolidays.map((holiday, index) => {
                 const key = holiday.id ?? `${holiday.date}-${holiday.name}`;
                 const isRemoving = removingId === key;
 
@@ -406,7 +402,7 @@ const HolidaysTab: React.FC = () => {
                         {formatHolidayDate(holiday.date, holiday.repeats_yearly)}
                       </span>
                       {holiday.repeats_yearly && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10">
+                        <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                           Recurring
                         </span>
                       )}
@@ -421,9 +417,9 @@ const HolidaysTab: React.FC = () => {
                     </button>
                   </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </div>
       </div>
 
