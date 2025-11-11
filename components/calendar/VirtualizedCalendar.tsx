@@ -165,6 +165,10 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+
     const id = requestAnimationFrame(() => {
       virtualizer.scrollToIndex(todayRow, {
         align: 'start',
@@ -173,7 +177,7 @@ const VirtualizedCalendar: React.FC = () => {
     });
 
     return () => cancelAnimationFrame(id);
-  }, [todayRow, virtualizer]);
+  }, [isMounted, todayRow, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const viewportStart = virtualizer.scrollOffset ?? 0;

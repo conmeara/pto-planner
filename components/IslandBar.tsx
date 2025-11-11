@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PanelHeaderActionsContext } from './panel-header-context';
 
 // Tab components
 import PTOTab from './tabs/PTOTab';
@@ -43,7 +44,7 @@ const TABS: TabConfig[] = [
     legendDotClass: 'bg-primary',
     label: 'PTO',
     panelTitle: 'PTO Settings',
-    panelDescription: 'Adjust balances and accrual – updates are saved instantly.',
+    panelDescription: 'Adjust balances and accrual.',
   },
   {
     type: TabType.SUGGESTED_PTO,
@@ -76,6 +77,18 @@ const TABS: TabConfig[] = [
 
 const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<TabType>(TabType.NONE);
+  const [headerActions, setHeaderActions] = useState<React.ReactNode>(null);
+
+  const setHeaderActionsCallback = useCallback((actions: React.ReactNode) => {
+    setHeaderActions(actions);
+  }, []);
+
+  const headerActionsContextValue = useMemo(
+    () => ({
+      setHeaderActions: setHeaderActionsCallback,
+    }),
+    [setHeaderActionsCallback]
+  );
 
   // Close the panel when users press Escape
   useEffect(() => {
@@ -94,6 +107,10 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   };
 
   const activeTabConfig = TABS.find((tab) => tab.type === activeTab);
+
+  useEffect(() => {
+    setHeaderActions(null);
+  }, [activeTab]);
 
   const renderActiveTabContent = () => {
     switch (activeTab) {
@@ -191,7 +208,8 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {headerActions}
                 {activeTab === TabType.SAVE && <ThemeSwitcher />}
                 <button
                   type="button"
@@ -205,7 +223,9 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
             </div>
 
             <div className="mt-4">
-              {renderActiveTabContent()}
+              <PanelHeaderActionsContext.Provider value={headerActionsContextValue}>
+                {renderActiveTabContent()}
+              </PanelHeaderActionsContext.Provider>
             </div>
           </motion.section>
         )}
