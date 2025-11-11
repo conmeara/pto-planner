@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PanelHeaderActionsContext } from './panel-header-context';
 
 // Tab components
 import PTOTab from './tabs/PTOTab';
@@ -75,47 +74,146 @@ const TABS: TabConfig[] = [
   },
 ];
 
+const ACTIVE_TAB_STORAGE_KEY = 'islandBar.activeTab';
+const VALID_TABS = new Set<TabType>(Object.values(TabType) as TabType[]);
+
 const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<TabType>(TabType.NONE);
   const [headerActions, setHeaderActions] = useState<React.ReactNode>(null);
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
 
-  const setHeaderActionsCallback = useCallback((actions: React.ReactNode) => {
+  const setHeaderActionsCallback = useCallback((actions: React.ReactNode | null) => {
+    console.log('[IslandBar] setHeaderActionsCallback called', { hasActions: !!actions });
     setHeaderActions(actions);
   }, []);
 
-  const headerActionsContextValue = useMemo(
-    () => ({
-      setHeaderActions: setHeaderActionsCallback,
-    }),
-    [setHeaderActionsCallback]
+  const setActiveTabAndPersist = useCallback(
+    (update: TabType | ((current: TabType) => TabType)) => {
+      setActiveTab((current) => {
+        const next = typeof update === 'function' ? update(current) : update;
+
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, next);
+          } catch (error) {
+            console.warn('[IslandBar] Failed to persist active tab', error);
+          }
+        }
+
+        return next;
+      });
+    },
+    [setActiveTab]
   );
 
   // Close the panel when users press Escape
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setActiveTab(TabType.NONE);
+        setActiveTabAndPersist(TabType.NONE);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setActiveTabAndPersist]);
+
+  // Don't clear header actions on tab change - let the tabs manage their own cleanup
+  // This was causing the toggle to disappear because it cleared AFTER PTOTab set it
+  
+  useEffect(() => {
+    console.log('[IslandBar] headerActions changed', { hasHeaderActions: !!headerActions });
+  }, [headerActions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let storedTab: string | null = null;
+
+    try {
+      storedTab = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    } catch (error) {
+      console.warn('[IslandBar] Failed to read active tab from storage', error);
+    }
+
+    if (storedTab && VALID_TABS.has(storedTab as TabType)) {
+      setActiveTab((storedTab as TabType));
+      return;
+    }
+
+    setActiveTabAndPersist(TabType.PTO);
+  }, [setActiveTab, setActiveTabAndPersist]);
+
+  const scrollActivePanelIntoView = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const panel = panelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    const menuHeight = menuContainerRef.current?.getBoundingClientRect().height ?? 0;
+    const panelRectTop = panel.getBoundingClientRect().top;
+    const scrollMargin = 16;
+    const stickyOffset = menuHeight + scrollMargin;
+    const panelTopRelativeToViewport = panelRectTop;
+    const panelTop = panelRectTop + window.scrollY;
+    const targetScrollTop = Math.max(panelTop - stickyOffset, 0);
+
+    if (panelTopRelativeToViewport >= stickyOffset) {
+      return;
+    }
+
+    const prefersReducedMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+    window.scrollTo({
+      top: targetScrollTop,
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+    });
   }, []);
 
-  const toggleTab = (tab: TabType) => {
-    setActiveTab((current) => (current === tab ? TabType.NONE : tab));
-  };
+  useEffect(() => {
+    if (activeTab === TabType.NONE) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollActivePanelIntoView();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, scrollActivePanelIntoView]);
+
+  const toggleTab = useCallback(
+    (tab: TabType) => {
+      setActiveTabAndPersist((current) => {
+        if (current === tab) {
+          scrollActivePanelIntoView();
+          return current;
+        }
+
+        return tab;
+      });
+    },
+    [scrollActivePanelIntoView, setActiveTabAndPersist]
+  );
 
   const activeTabConfig = TABS.find((tab) => tab.type === activeTab);
 
-  useEffect(() => {
-    setHeaderActions(null);
-  }, [activeTab]);
-
-  const renderActiveTabContent = () => {
+  const activeTabContent = useMemo(() => {
     switch (activeTab) {
       case TabType.PTO:
-        return <PTOTab />;
+        return <PTOTab onHeaderActionsChange={setHeaderActionsCallback} />;
       case TabType.SUGGESTED_PTO:
         return <SuggestedPTOTab />;
       case TabType.PUBLIC_HOLIDAYS:
@@ -127,11 +225,11 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
       default:
         return null;
     }
-  };
+  }, [activeTab, setHeaderActionsCallback]);
 
   return (
     <div className={cn('mx-auto w-full max-w-7xl space-y-4 px-0', className)}>
-      <div className="sticky top-0 z-40 flex justify-center pt-2">
+      <div ref={menuContainerRef} className="sticky top-0 z-40 flex justify-center pt-2">
         <motion.div
           className="flex items-center gap-1.5 rounded-3xl border border-border/80 bg-muted px-3 py-1.5 text-sm text-muted-foreground sm:px-4"
           layout
@@ -190,6 +288,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
           <motion.section
             key={activeTab}
             id={`island-panel-${activeTab}`}
+            ref={panelRef}
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
@@ -213,7 +312,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 {activeTab === TabType.SAVE && <ThemeSwitcher />}
                 <button
                   type="button"
-                  onClick={() => setActiveTab(TabType.NONE)}
+                  onClick={() => setActiveTabAndPersist(TabType.NONE)}
                   className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Close panel"
                 >
@@ -222,11 +321,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
               </div>
             </div>
 
-            <div className="mt-4">
-              <PanelHeaderActionsContext.Provider value={headerActionsContextValue}>
-                {renderActiveTabContent()}
-              </PanelHeaderActionsContext.Provider>
-            </div>
+            <div className="mt-4">{activeTabContent}</div>
           </motion.section>
         )}
       </AnimatePresence>
