@@ -332,9 +332,10 @@ interface PlannerContextType {
   addHoliday: (holiday: {
     name: string;
     date: string;
+    endDate?: string;
     repeatsYearly?: boolean;
     isPaidHoliday?: boolean;
-  }) => Promise<ActionResult<CustomHoliday>>;
+  }) => Promise<ActionResult<CustomHoliday[]>>;
 }
 
 // ============================================================================
@@ -901,58 +902,157 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     async ({
       name,
       date,
+      endDate,
       repeatsYearly = false,
       isPaidHoliday = true,
     }: {
       name: string;
       date: string;
+      endDate?: string;
       repeatsYearly?: boolean;
       isPaidHoliday?: boolean;
-    }): Promise<ActionResult<CustomHoliday>> => {
+    }): Promise<ActionResult<CustomHoliday[]>> => {
       try {
-        if (isAuthenticated) {
-          const result = await addCustomHoliday(name, date, repeatsYearly, isPaidHoliday);
-
-          if (!result.success || !result.data) {
-            return result;
-          }
-
-          const insertedHoliday = result.data;
-
-          setPlannerData((prev) => {
-            if (!prev) {
-              return prev;
-            }
-
-            const nextHolidays = [...(prev.holidays || []), insertedHoliday].sort((a, b) =>
-              a.date.localeCompare(b.date)
-            );
-
-            return {
-              ...prev,
-              holidays: nextHolidays,
-            };
-          });
-
-          return result;
+        const trimmedName = name.trim();
+        if (!trimmedName) {
+          return { success: false, error: 'Holiday name is required' };
         }
 
-        const nowIso = new Date().toISOString();
-        const newHoliday: CustomHoliday = {
-          id: generateHolidayId(),
-          user_id: 'local',
-          name,
-          date,
-          repeats_yearly: repeatsYearly,
-          is_paid_holiday: isPaidHoliday,
-          created_at: nowIso,
-          updated_at: nowIso,
-        };
+        if (!date) {
+          return { success: false, error: 'Start date is required' };
+        }
 
-        const nextLocal = [...localHolidays, newHoliday].sort((a, b) => a.date.localeCompare(b.date));
-        saveLocalHolidays(nextLocal);
+        const start = parseDateLocal(date);
+        if (Number.isNaN(start.getTime())) {
+          return { success: false, error: 'Invalid start date' };
+        }
 
-        return { success: true, data: newHoliday };
+        let rangeEnd = start;
+        if (endDate) {
+          const parsedEnd = parseDateLocal(endDate);
+          if (Number.isNaN(parsedEnd.getTime())) {
+            return { success: false, error: 'Invalid end date' };
+          }
+          if (parsedEnd < start) {
+            return { success: false, error: 'End date cannot be before start date.' };
+          }
+          rangeEnd = parsedEnd;
+        }
+
+        const existingHolidaysSnapshot = [...getHolidays()];
+        const datesToInsert: Array<{ dateObj: Date; dateStr: string }> = [];
+        const seenDates = new Set<string>();
+
+        const normalizedStart = startOfDay(start);
+        const normalizedEnd = startOfDay(rangeEnd);
+
+        for (
+          let cursor = new Date(normalizedStart);
+          cursor <= normalizedEnd;
+          cursor = addDays(cursor, 1)
+        ) {
+          const currentDate = new Date(cursor);
+          const dateStrCandidate = formatDateLocal(currentDate);
+
+          if (seenDates.has(dateStrCandidate)) {
+            continue;
+          }
+
+          const isWeekendDay = isDateWeekend(currentDate);
+          const alreadyHoliday = existingHolidaysSnapshot.some((holiday) =>
+            matchesHoliday(currentDate, holiday.date, holiday.repeats_yearly)
+          );
+
+          if (isWeekendDay || alreadyHoliday) {
+            continue;
+          }
+
+          datesToInsert.push({
+            dateObj: currentDate,
+            dateStr: dateStrCandidate,
+          });
+          seenDates.add(dateStrCandidate);
+        }
+
+        if (datesToInsert.length === 0) {
+          return {
+            success: false,
+            error: 'No eligible dates to add. All days fall on weekends or existing holidays.',
+          };
+        }
+
+        const createdHolidays: CustomHoliday[] = [];
+        const addedDates: Date[] = [];
+
+        if (isAuthenticated) {
+          for (const entry of datesToInsert) {
+            const result = await addCustomHoliday(trimmedName, entry.dateStr, repeatsYearly, isPaidHoliday);
+
+            if (!result.success || !result.data) {
+              if (addedDates.length > 0) {
+                setSelectedDays((prev) =>
+                  prev.filter(
+                    (existingDate) => !addedDates.some((addedDate) => isSameDay(existingDate, addedDate))
+                  )
+                );
+              }
+              return { success: false, error: result.error || 'Failed to add holiday' };
+            }
+
+            const insertedHoliday = result.data;
+            createdHolidays.push(insertedHoliday);
+            addedDates.push(new Date(entry.dateObj));
+            existingHolidaysSnapshot.push(insertedHoliday);
+
+            setPlannerData((prev) => {
+              if (!prev) {
+                return prev;
+              }
+
+              const nextHolidays = [...(prev.holidays || []), insertedHoliday].sort((a, b) =>
+                a.date.localeCompare(b.date)
+              );
+
+              return {
+                ...prev,
+                holidays: nextHolidays,
+              };
+            });
+          }
+        } else {
+          const nowIso = new Date().toISOString();
+          const localAdditions = datesToInsert.map((entry) => {
+            const newHoliday: CustomHoliday = {
+              id: generateHolidayId(),
+              user_id: 'local',
+              name: trimmedName,
+              date: entry.dateStr,
+              repeats_yearly: repeatsYearly,
+              is_paid_holiday: isPaidHoliday,
+              created_at: nowIso,
+              updated_at: nowIso,
+            };
+
+            createdHolidays.push(newHoliday);
+            addedDates.push(new Date(entry.dateObj));
+            existingHolidaysSnapshot.push(newHoliday);
+
+            return newHoliday;
+          });
+
+          const nextLocal = [...localHolidays, ...localAdditions].sort((a, b) => a.date.localeCompare(b.date));
+          saveLocalHolidays(nextLocal);
+        }
+
+        if (addedDates.length > 0) {
+          setSelectedDays((prev) =>
+            prev.filter((existingDate) =>
+              !addedDates.some((addedDate) => isSameDay(existingDate, addedDate))
+            )
+          );
+        }
+
+        return { success: true, data: createdHolidays };
       } catch (error) {
         console.error('Error adding holiday:', error);
         if (error instanceof Error) {
@@ -961,7 +1061,17 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         return { success: false, error: 'Failed to add holiday' };
       }
     },
-    [addCustomHoliday, generateHolidayId, isAuthenticated, localHolidays, saveLocalHolidays, setPlannerData]
+    [
+      addCustomHoliday,
+      generateHolidayId,
+      getHolidays,
+      isAuthenticated,
+      isDateWeekend,
+      localHolidays,
+      saveLocalHolidays,
+      setPlannerData,
+      setSelectedDays,
+    ]
   );
 
   const detectCountryFromClient = useCallback(async (options?: { preferIp?: boolean }): Promise<string | null> => {

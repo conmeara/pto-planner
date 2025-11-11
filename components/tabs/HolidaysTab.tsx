@@ -12,8 +12,10 @@ import type { CustomHoliday } from '@/types';
 import { cn } from '@/lib/utils';
 import { getCalendarYearBounds } from '@/lib/calendar-range';
 
-// Expanded country list (supports Nager.Date API)
-const COUNTRIES = [
+type CountryOption = { code: string; name: string };
+
+// Default country list used before remote data loads or if it fails
+const DEFAULT_COUNTRIES: CountryOption[] = [
   { code: 'US', name: 'United States' },
   { code: 'GB', name: 'United Kingdom' },
   { code: 'CA', name: 'Canada' },
@@ -52,8 +54,12 @@ const HolidaysTab: React.FC = () => {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [customHolidayName, setCustomHolidayName] = useState('');
   const [customHolidayDate, setCustomHolidayDate] = useState('');
+  const [customHolidayEndDate, setCustomHolidayEndDate] = useState('');
   const [customHolidayRepeats, setCustomHolidayRepeats] = useState(false);
   const [isAddingHoliday, setIsAddingHoliday] = useState(false);
+  const [countries, setCountries] = useState<CountryOption[]>(DEFAULT_COUNTRIES);
+  const [isFetchingCountries, setIsFetchingCountries] = useState(false);
+  const [countriesError, setCountriesError] = useState<string | null>(null);
 
   const holidays = getHolidays();
   const calendarBounds = useMemo(() => getCalendarYearBounds(new Date()), []);
@@ -70,6 +76,64 @@ const HolidaysTab: React.FC = () => {
   useEffect(() => {
     setSelectedCountry(countryCode || 'US');
   }, [countryCode]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const loadCountries = async () => {
+      try {
+        setIsFetchingCountries(true);
+        const response = await fetch('https://date.nager.at/api/v3/AvailableCountries', {
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load countries: ${response.status}`);
+        }
+
+        const data: Array<{ countryCode: string; name: string }> = await response.json();
+        if (!isMounted) {
+          return;
+        }
+
+        const mapped = data
+          .map((entry) => ({
+            code: entry.countryCode,
+            name: entry.name,
+          }))
+          .filter((entry) => entry.code && entry.name)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        setCountries(mapped);
+        setCountriesError(null);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error('Failed to fetch country list', error);
+        if (isMounted) {
+          setCountries(DEFAULT_COUNTRIES);
+          setCountriesError('Showing a limited country list while we retry.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsFetchingCountries(false);
+        }
+      }
+    };
+
+    void loadCountries();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!successMessage) {
@@ -152,14 +216,14 @@ const HolidaysTab: React.FC = () => {
   const hasLoadedAny = sortedHolidays.length > 0;
 
   const availableCountries = useMemo(() => {
-    if (!selectedCountry) return COUNTRIES;
-    const exists = COUNTRIES.some((country) => country.code === selectedCountry);
-    if (exists) return COUNTRIES;
+    if (!selectedCountry) return countries;
+    const exists = countries.some((country) => country.code === selectedCountry);
+    if (exists) return countries;
     return [
-      ...COUNTRIES,
+      ...countries,
       { code: selectedCountry, name: `Detected (${selectedCountry})` },
     ];
-  }, [selectedCountry]);
+  }, [countries, selectedCountry]);
 
   const handleCountryChange = async (code: string) => {
     setSelectedCountry(code);
@@ -223,8 +287,27 @@ const HolidaysTab: React.FC = () => {
     }
 
     if (!customHolidayDate) {
-      setErrorMessage('Holiday date is required.');
+      setErrorMessage('Holiday start date is required.');
       return;
+    }
+
+    const startDateObj = parseDateLocal(customHolidayDate);
+    if (Number.isNaN(startDateObj.getTime())) {
+      setErrorMessage('Holiday start date is invalid.');
+      return;
+    }
+
+    if (customHolidayEndDate) {
+      const endDateObj = parseDateLocal(customHolidayEndDate);
+      if (Number.isNaN(endDateObj.getTime())) {
+        setErrorMessage('Holiday end date is invalid.');
+        return;
+      }
+
+      if (endDateObj < startDateObj) {
+        setErrorMessage('End date cannot be before start date.');
+        return;
+      }
     }
 
     setErrorMessage(null);
@@ -234,6 +317,7 @@ const HolidaysTab: React.FC = () => {
     const result = await addHoliday({
       name: trimmedName,
       date: customHolidayDate,
+      endDate: customHolidayEndDate || undefined,
       repeatsYearly: customHolidayRepeats,
     });
 
@@ -244,9 +328,40 @@ const HolidaysTab: React.FC = () => {
       return;
     }
 
-    setSuccessMessage(`Added ${trimmedName}`);
+    const addedHolidays = result.data ?? [];
+    const addedCount = addedHolidays.length;
+
+    if (addedCount === 0) {
+      setErrorMessage('No holidays were added.');
+      return;
+    }
+
+    const datesForDisplay = addedHolidays
+      .map((holiday) => parseDateLocal(holiday.date))
+      .filter((dateObj) => !Number.isNaN(dateObj.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    let rangeText = '';
+    if (datesForDisplay.length === 1) {
+      rangeText = formatter.format(datesForDisplay[0]);
+    } else if (datesForDisplay.length > 1) {
+      const startLabel = formatter.format(datesForDisplay[0]);
+      const endLabel = formatter.format(datesForDisplay[datesForDisplay.length - 1]);
+      rangeText = `${startLabel} – ${endLabel}`;
+    }
+
+    const dayLabel = addedCount === 1 ? 'day' : 'days';
+    const rangeSuffix = rangeText ? ` (${rangeText})` : '';
+    setSuccessMessage(`Added ${addedCount} holiday ${dayLabel} for ${trimmedName}${rangeSuffix}.`);
     setCustomHolidayName('');
     setCustomHolidayDate('');
+    setCustomHolidayEndDate('');
     setCustomHolidayRepeats(false);
   };
 
@@ -262,8 +377,10 @@ const HolidaysTab: React.FC = () => {
           <Label htmlFor="country" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Country
           </Label>
-          {isLoadingHolidays && (
-            <span className="text-[11px] text-muted-foreground">Loading holidays...</span>
+          {(isLoadingHolidays || isFetchingCountries) && (
+            <span className="text-[11px] text-muted-foreground">
+              {isFetchingCountries ? 'Loading countries...' : 'Loading holidays...'}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -274,8 +391,13 @@ const HolidaysTab: React.FC = () => {
               value={selectedCountry}
               onChange={(event) => handleCountryChange(event.target.value)}
               className="w-full rounded-2xl border border-border bg-card py-2 pl-8 pr-3 text-xs text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isLoadingHolidays}
+              disabled={isLoadingHolidays || isFetchingCountries}
             >
+              {isFetchingCountries && (
+                <option value="" disabled>
+                  Loading countries...
+                </option>
+              )}
               {availableCountries.map((country) => (
                 <option key={country.code} value={country.code}>
                   {country.name}
@@ -321,6 +443,12 @@ const HolidaysTab: React.FC = () => {
         </div>
       )}
 
+      {countriesError && (
+        <div className="rounded-2xl border border-border/60 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+          {countriesError}
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="max-h-64 overflow-y-auto rounded-3xl border border-border bg-card">
           <div className="divide-y divide-border/60">
@@ -339,17 +467,37 @@ const HolidaysTab: React.FC = () => {
                   placeholder="Add custom holiday"
                   className="!h-7 !text-[11px] !rounded-none !border-none w-full min-w-0 flex-1 border-b border-border/40 bg-transparent px-0 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
                 />
-                <div className="w-32 shrink-0">
-                  <Label htmlFor="custom-holiday-date" className="sr-only">
-                    Holiday date
-                  </Label>
-                  <Input
-                    id="custom-holiday-date"
-                    type="date"
-                    value={customHolidayDate}
-                    onChange={(event) => setCustomHolidayDate(event.target.value)}
-                    className="!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 text-muted-foreground !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
-                  />
+                <div className="flex shrink-0 gap-2">
+                  <div className="w-32">
+                    <Label htmlFor="custom-holiday-date" className="sr-only">
+                      Holiday start date
+                    </Label>
+                    <Input
+                      id="custom-holiday-date"
+                      type="date"
+                      value={customHolidayDate}
+                      onChange={(event) => setCustomHolidayDate(event.target.value)}
+                      className="!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 text-muted-foreground !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <Label htmlFor="custom-holiday-end-date" className="sr-only">
+                      Holiday end date (optional)
+                    </Label>
+                    <Input
+                      id="custom-holiday-end-date"
+                      type="date"
+                      value={customHolidayEndDate}
+                      onChange={(event) => setCustomHolidayEndDate(event.target.value)}
+                      placeholder="End date (optional)"
+                      className={cn(
+                        '!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none',
+                        customHolidayEndDate
+                          ? 'text-foreground'
+                          : 'text-muted-foreground opacity-60 focus-visible:opacity-100'
+                      )}
+                    />
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <Checkbox
