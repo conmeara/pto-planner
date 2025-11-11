@@ -80,7 +80,7 @@ const getDayClasses = (type: DayType, options: { isToday?: boolean } = {}) => {
     [DayType.SUGGESTED_PTO]: 'bg-suggested text-suggested-foreground',
   } satisfies Record<DayType, string>;
 
-  return cn(baseClasses, typeClasses[type], isToday && 'ring-2 ring-primary');
+  return cn(baseClasses, typeClasses[type], isToday && '!ring-[3px] !ring-foreground');
 };
 
 export interface MonthCardProps {
