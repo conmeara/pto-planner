@@ -35,13 +35,25 @@ export async function initializeUserAccount(
     }
 
     // Create default PTO settings
-    const today = formatDateLocal(new Date());
+    // Set PTO start date to the Friday of the week that contains the date 2 weeks ago
+    const today = new Date();
+    const twoWeeksAgo = new Date(today);
+    twoWeeksAgo.setDate(today.getDate() - 14);
+    
+    // Find the Friday of that week (Friday is day 5, where 0 = Sunday)
+    const dayOfWeek = twoWeeksAgo.getDay();
+    const daysToFriday = (dayOfWeek + 2) % 7; // Calculate days to subtract to get to Friday
+    const fridayOfTwoWeeksAgo = new Date(twoWeeksAgo);
+    fridayOfTwoWeeksAgo.setDate(twoWeeksAgo.getDate() - daysToFriday);
+    
+    const ptoStartDate = formatDateLocal(fridayOfTwoWeeksAgo);
+    
     const { error: settingsError } = await supabase
       .from('pto_settings')
       .insert({
         user_id: userId,
-        pto_start_date: today,
-        initial_balance: 0,
+        pto_start_date: ptoStartDate,
+        initial_balance: 15,
         pto_display_unit: 'days',
         hours_per_day: 8,
         allow_negative_balance: false,

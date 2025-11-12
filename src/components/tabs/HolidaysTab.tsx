@@ -372,8 +372,8 @@ const HolidaysTab: React.FC = () => {
   return (
     <div className="space-y-4 text-sm text-foreground">
       {/* Country Selection */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
+      <div className="space-y-2">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <Label htmlFor="country" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Country
           </Label>
@@ -383,7 +383,7 @@ const HolidaysTab: React.FC = () => {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="relative flex-1">
             <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <select
@@ -405,7 +405,7 @@ const HolidaysTab: React.FC = () => {
               ))}
             </select>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 sm:justify-end">
             {yearTabs.map((tabKey) => {
               const isActive = tabKey === activeYear;
               return (
@@ -414,7 +414,7 @@ const HolidaysTab: React.FC = () => {
                   key={tabKey}
                   onClick={() => setActiveYear(tabKey)}
                   className={cn(
-                    'rounded-2xl border px-2.5 py-1 text-[11px] font-medium transition',
+                    'rounded-2xl border px-3 py-1.5 text-[11px] font-medium transition',
                     isActive
                       ? 'border-primary bg-primary/15 text-primary'
                       : 'border-transparent bg-muted text-muted-foreground hover:text-foreground'
@@ -454,9 +454,9 @@ const HolidaysTab: React.FC = () => {
           <div className="divide-y divide-border/60">
             <form
               onSubmit={handleAddHoliday}
-              className="flex items-center justify-between gap-3 bg-card px-3 py-1 text-[11px] transition hover:bg-muted/60"
+              className="flex flex-col gap-3 bg-card px-3 py-2 text-[11px] transition hover:bg-muted/60 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex flex-col gap-2 sm:min-w-0 sm:flex-1 sm:flex-row sm:items-center sm:gap-3">
                 <Label htmlFor="custom-holiday-name" className="sr-only">
                   Holiday name
                 </Label>
@@ -465,10 +465,10 @@ const HolidaysTab: React.FC = () => {
                   value={customHolidayName}
                   onChange={(event) => setCustomHolidayName(event.target.value)}
                   placeholder="Add custom holiday"
-                  className="!h-7 !text-[11px] !rounded-none !border-none w-full min-w-0 flex-1 border-b border-border/40 bg-transparent px-0 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
+                  className="!h-8 !text-[11px] w-full min-w-0 flex-1 rounded-2xl border border-border/60 bg-card px-3 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
                 />
-                <div className="flex shrink-0 gap-2">
-                  <div className="w-32">
+                <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0 sm:gap-2">
+                  <div className="w-full sm:w-32">
                     <Label htmlFor="custom-holiday-date" className="sr-only">
                       Holiday start date
                     </Label>
@@ -477,10 +477,10 @@ const HolidaysTab: React.FC = () => {
                       type="date"
                       value={customHolidayDate}
                       onChange={(event) => setCustomHolidayDate(event.target.value)}
-                      className="!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 text-muted-foreground !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none"
+                      className="!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-border/60 bg-card px-3 text-muted-foreground !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:text-muted-foreground sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
                     />
                   </div>
-                  <div className="w-32">
+                  <div className="w-full sm:w-32">
                     <Label htmlFor="custom-holiday-end-date" className="sr-only">
                       Holiday end date (optional)
                     </Label>
@@ -491,7 +491,7 @@ const HolidaysTab: React.FC = () => {
                       onChange={(event) => setCustomHolidayEndDate(event.target.value)}
                       placeholder="End date (optional)"
                       className={cn(
-                        '!h-7 !text-[11px] !rounded-none !border-none w-full appearance-none border-b border-border/40 bg-transparent px-0 !shadow-none transition focus-visible:border-b focus-visible:border-primary/50 focus-visible:ring-0 focus-visible:shadow-none',
+                        '!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-border/60 bg-card px-3 !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0',
                         customHolidayEndDate
                           ? 'text-foreground'
                           : 'text-muted-foreground opacity-60 focus-visible:opacity-100'
@@ -499,7 +499,7 @@ const HolidaysTab: React.FC = () => {
                     />
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex items-center gap-1 sm:shrink-0">
                   <Checkbox
                     id="custom-holiday-repeats"
                     checked={customHolidayRepeats}
@@ -517,7 +517,7 @@ const HolidaysTab: React.FC = () => {
                 disabled={
                   isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
                 }
-                className="h-7 shrink-0 px-3 text-[11px]"
+                className="h-9 w-full shrink-0 rounded-2xl px-3 text-[11px] sm:h-7 sm:w-auto"
               >
                 {isAddingHoliday ? 'Adding…' : 'Add'}
               </Button>
