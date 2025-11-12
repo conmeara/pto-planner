@@ -1,3 +1,4 @@
+import { initializeUserAccount } from "@/app/actions/user-actions";
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -13,6 +14,32 @@ export async function GET(request: Request) {
   if (code) {
     const supabase = await createClient();
     await supabase.auth.exchangeCodeForSession(code);
+
+    const {
+      data: { user },
+      error: userFetchError,
+    } = await supabase.auth.getUser();
+
+    if (!userFetchError && user) {
+      const { data: existingUser, error: profileError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError && profileError.code !== "PGRST116") {
+        console.error("Failed to load user profile during auth callback:", profileError);
+      }
+
+      if (!existingUser) {
+        const initResult = await initializeUserAccount(user.id, user.email ?? "");
+        if (!initResult.success) {
+          console.error("Failed to initialize user account during auth callback:", initResult.error);
+        }
+      }
+    } else if (userFetchError) {
+      console.error("Failed to fetch authenticated user during auth callback:", userFetchError);
+    }
   }
 
   if (redirectTo) {
