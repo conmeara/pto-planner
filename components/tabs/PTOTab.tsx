@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useTransition, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useTransition, useCallback, useRef, useMemo } from 'react';
 import { Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ import {
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
 import { formatDateLocal } from '@/lib/date-utils';
-import { usePanelHeaderActions } from '@/components/panel-header-context';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -115,7 +114,14 @@ interface FieldUnits {
   maxCarryover: FieldUnit;
 }
 
-const PTOTab: React.FC = () => {
+interface PTOTabProps {
+  onHeaderActionsChange?: (actions: React.ReactNode | null) => void;
+}
+
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
+const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
   const { plannerData, setPlannerData, isAuthenticated, getSettings, saveLocalSettings } = usePlanner();
   const [isPending, startTransition] = useTransition();
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -154,7 +160,7 @@ const PTOTab: React.FC = () => {
   });
   const lastDisplayUnitRef = useRef<FieldUnit>(localSettings.displayUnit);
 
-  const headerActions = usePanelHeaderActions();
+  const [renderedInHeader, setRenderedInHeader] = useState(false);
 
   // Update local settings when planner data changes
   useEffect(() => {
@@ -282,26 +288,38 @@ const PTOTab: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    if (!headerActions) {
-      return;
-    }
-
-    headerActions.setHeaderActions(
+  const advancedToggleNode = useMemo(
+    () => (
       <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <span>Advanced</span>
+        <label htmlFor="advanced-toggle" className="cursor-pointer">Advanced</label>
         <Switch
+          id="advanced-toggle"
           checked={localSettings.enableCarryoverLimit}
           onCheckedChange={handleAdvancedToggle}
           aria-label="Toggle advanced PTO controls"
         />
       </div>
-    );
+    ),
+    [handleAdvancedToggle, localSettings.enableCarryoverLimit]
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (!onHeaderActionsChange) {
+      console.log('[PTOTab] No onHeaderActionsChange callback provided');
+      setRenderedInHeader(false);
+      return;
+    }
+
+    console.log('[PTOTab] Setting header actions', { hasAdvancedToggle: !!advancedToggleNode });
+    onHeaderActionsChange(advancedToggleNode);
+    setRenderedInHeader(true);
 
     return () => {
-      headerActions.setHeaderActions(null);
+      console.log('[PTOTab] Cleanup: clearing header actions');
+      setRenderedInHeader(false);
+      onHeaderActionsChange(null);
     };
-  }, [headerActions, localSettings.enableCarryoverLimit, handleAdvancedToggle]);
+  }, [advancedToggleNode, onHeaderActionsChange]);
 
   useEffect(() => {
     const previous = lastDisplayUnitRef.current;
@@ -455,6 +473,9 @@ const PTOTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {!renderedInHeader && (
+        <div className="flex justify-end">{advancedToggleNode}</div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5">
           <Label htmlFor="initialBalance" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

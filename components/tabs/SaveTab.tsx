@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Coffee, Mail, LogOut, CheckCircle, Github } from 'lucide-react';
+import {
+  Coffee,
+  Mail,
+  LogOut,
+  CheckCircle,
+  Github,
+  MailCheck,
+  ShieldCheck,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -11,7 +19,7 @@ import { signInWithMagicLinkAction, signOutAction } from '@/app/actions';
 const SaveTab: React.FC = () => {
   const { plannerData } = usePlanner();
   const [emailInput, setEmailInput] = useState('');
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSendingLink, setIsSendingLink] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +29,7 @@ const SaveTab: React.FC = () => {
   // Handle sign in with magic link
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSigningIn(true);
+    setIsSendingLink(true);
     setError(null);
 
     try {
@@ -41,7 +49,7 @@ const SaveTab: React.FC = () => {
       setError('Failed to send magic link. Please try again.');
       console.error('Sign in error:', err);
     } finally {
-      setIsSigningIn(false);
+      setIsSendingLink(false);
     }
   };
 
@@ -58,6 +66,17 @@ const SaveTab: React.FC = () => {
     <div className="space-y-4">
       {!isLoggedIn ? (
         <div className="space-y-3 rounded-3xl border border-border bg-card px-4 py-4">
+          <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+            <div className="flex items-start gap-2 text-foreground">
+              <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
+              <p className="font-medium">
+                Your plan auto-saves on this browser—no account required.
+              </p>
+            </div>
+            <p>
+              Want your selected days and settings to travel with you? Enter your email and we&apos;ll send a password-free magic link that syncs everything securely across devices.
+            </p>
+          </div>
           <form onSubmit={handleSignIn} className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -76,11 +95,14 @@ const SaveTab: React.FC = () => {
                     required
                   />
                 </div>
-                <Button type="submit" size="sm" className="min-w-20" disabled={isSigningIn}>
-                  <CheckCircle className="mr-2 h-3.5 w-3.5" />
-                  {isSigningIn ? 'Saving…' : 'Save'}
+                <Button type="submit" size="sm" className="min-w-24" disabled={isSendingLink}>
+                  <MailCheck className="mr-2 h-3.5 w-3.5" />
+                  {isSendingLink ? 'Sending…' : 'Send link'}
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                We&apos;ll email a one-time sign-in link—no password to remember.
+              </p>
             </div>
           </form>
           {error && (
@@ -91,7 +113,7 @@ const SaveTab: React.FC = () => {
           {showSuccess && (
             <div className="flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-foreground">
               <CheckCircle className="h-3.5 w-3.5 text-primary" />
-              Magic link on its way—check your email.
+              Magic link sent! Open it on any device to sync your PTO plan.
             </div>
           )}
         </div>
@@ -105,7 +127,7 @@ const SaveTab: React.FC = () => {
             <span className="text-xs text-muted-foreground">auto-save on</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Signed in as <strong className="text-foreground">{email}</strong>. Changes mirror across all devices instantly.
+            Signed in as <strong className="text-foreground">{email}</strong>. We&apos;ll keep your PTO days, holidays, and settings synced everywhere you use this email.
           </p>
           <Button variant="outline" onClick={handleSignOut} size="sm">
             <LogOut className="mr-2 h-3.5 w-3.5" />
@@ -120,8 +142,8 @@ const SaveTab: React.FC = () => {
             Enjoying PTO Planner?
           </span>
           <div className="flex gap-2">
-            <Button asChild variant="secondary" size="sm" className="flex-1">
-              <a href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1">
+            <Button asChild variant="secondary" size="sm" className="flex-1 opacity-50 cursor-not-allowed pointer-events-none" disabled>
+              <a className="inline-flex items-center justify-center gap-1">
                 <Coffee className="h-3.5 w-3.5" />
                 Support
               </a>
