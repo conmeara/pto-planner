@@ -988,7 +988,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
           for (const entry of datesToInsert) {
             const result = await addCustomHoliday(trimmedName, entry.dateStr, repeatsYearly, isPaidHoliday);
 
-            if (!result.success || !result.data) {
+            if (!result.success) {
               if (addedDates.length > 0) {
                 setSelectedDays((prev) =>
                   prev.filter(
@@ -996,7 +996,18 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
                   )
                 );
               }
-              return { success: false, error: result.error || 'Failed to add holiday' };
+              return { success: false, error: result.error };
+            }
+
+            if (!result.data) {
+              if (addedDates.length > 0) {
+                setSelectedDays((prev) =>
+                  prev.filter(
+                    (existingDate) => !addedDates.some((addedDate) => isSameDay(existingDate, addedDate))
+                  )
+                );
+              }
+              return { success: false, error: 'Failed to add holiday' };
             }
 
             const insertedHoliday = result.data;

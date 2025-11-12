@@ -150,7 +150,7 @@ The application uses a comprehensive schema designed for PTO tracking:
 - **Custom Holidays**: User-defined holidays and paid time off
 - **Weekend Config**: Configurable weekend days per user
 
-See [docs/database-schema.md](docs/database-schema.md) for detailed documentation.
+See [database-schema.md](../architecture/database-schema.md) for detailed documentation.
 
 ### Row Level Security (RLS)
 
@@ -236,16 +236,15 @@ Once your environment is set up:
 3. **Add Holidays**: Configure your country's public holidays
 4. **Plan PTO**: Start planning your time off!
 
-For detailed product features and requirements, see [docs/PRD.md](docs/PRD.md).
+For detailed product features and requirements, see [prd.md](../product/prd.md).
 
 ---
 
 ## Support
 
-- **Documentation**: See `docs/` folder for detailed guides
-- **Database Schema**: See `docs/database-schema.md`
-- **Product Requirements**: See `docs/PRD.md`
+- **Documentation**: Browse the `/docs` folder for additional guides
+- **Database Schema**: See [database-schema.md](../architecture/database-schema.md)
+- **Product Requirements**: See [prd.md](../product/prd.md)
 - **Supabase Docs**: [https://supabase.com/docs](https://supabase.com/docs)
 
 Happy PTO planning! 🏖️
-

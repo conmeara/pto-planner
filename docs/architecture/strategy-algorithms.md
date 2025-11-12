@@ -6,7 +6,7 @@ The PTO planner features a sophisticated optimization system with 5 different st
 ## 1. STRATEGY ALGORITHMS
 
 ### 1.1 Strategy Types (5 Total)
-Located in: `/home/user/pto-planner-v3/components/tabs/SuggestedPTOTab.tsx` (lines 10-16)
+Located in: `src/components/tabs/SuggestedPTOTab.tsx` (lines 10-16)
 
 ```typescript
 enum StrategyType {
@@ -35,7 +35,7 @@ enum StrategyType {
 ### Core Strategy Files
 
 #### A. Strategy UI Component
-**File:** `/home/user/pto-planner-v3/components/tabs/SuggestedPTOTab.tsx`
+**File:** `src/components/tabs/SuggestedPTOTab.tsx`
 - **Lines:** 1-244
 - **Purpose:** User interface for strategy selection and application
 - **Key Components:**
@@ -46,7 +46,7 @@ enum StrategyType {
   - Optimization result display (lines 178-203)
 
 #### B. Optimization Engine
-**File:** `/home/user/pto-planner-v3/lib/pto-optimizer.ts`
+**File:** `src/lib/pto-optimizer.ts`
 - **Lines:** 1-529 (529 total lines)
 - **Purpose:** Core algorithm implementations
 - **Key Functions:**
@@ -59,7 +59,7 @@ enum StrategyType {
   - Helper functions for analysis (lines 42-263)
 
 #### C. State Management
-**File:** `/home/user/pto-planner-v3/contexts/PlannerContext.tsx`
+**File:** `src/contexts/PlannerContext.tsx`
 - **Lines:** 1-1030 (1030 total lines)
 - **Purpose:** Central state management for all planning data
 - **Key State Variables:**
@@ -72,7 +72,7 @@ enum StrategyType {
   - `clearSuggestions()` - Clears all suggestions (lines 882-886)
 
 #### D. UI Container
-**File:** `/home/user/pto-planner-v3/components/IslandBar.tsx`
+**File:** `src/components/IslandBar.tsx`
 - **Lines:** 1-202
 - **Purpose:** Tab navigation and panel management
 - **Key Content:**
@@ -82,14 +82,14 @@ enum StrategyType {
 
 #### E. Calendar Display
 **Files:**
-- `/home/user/pto-planner-v3/components/calendar/MonthCard.tsx` (lines 1-312)
+- `src/components/calendar/MonthCard.tsx` (lines 1-312)
   - Day type determination (lines 218-228)
   - Suggested day styling (lines 79-80, 222-223)
-- `/home/user/pto-planner-v3/components/calendar/VirtualizedCalendar.tsx`
+- `src/components/calendar/VirtualizedCalendar.tsx`
   - Virtualized rendering for performance
 
 #### F. Type Definitions
-**File:** `/home/user/pto-planner-v3/types/index.ts`
+**File:** `src/types/index.ts`
 - **Lines:** 190-220
 - **Key Types:**
   - `StrategyType` (line 194)
@@ -173,7 +173,7 @@ const dayType = isToday(date)
 ## 5. "APPLY PLAN" AND "CLEAR" BUTTONS
 
 ### Location
-**File:** `/home/user/pto-planner-v3/components/tabs/SuggestedPTOTab.tsx`
+**File:** `src/components/tabs/SuggestedPTOTab.tsx`
 **Lines:** 205-239
 
 ### Button Implementation

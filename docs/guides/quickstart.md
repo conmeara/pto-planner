@@ -100,11 +100,9 @@ npm run dev
 3. **Plan Your Year** - Start marking PTO days on the calendar!
 
 For detailed documentation, see:
-- [SETUP.md](SETUP.md) - Complete setup guide
-- [README.md](README.md) - Full documentation
-- [docs/PRD.md](docs/PRD.md) - Feature details
+- [setup.md](./setup.md) - Complete setup guide
+- [README.md](../../README.md) - Full documentation
+- [prd.md](../product/prd.md) - Feature details
 
----
 
-**Questions?** Check the [troubleshooting section in SETUP.md](SETUP.md#troubleshooting) 📖
-
+**Questions?** Check the [troubleshooting section in setup.md](./setup.md#troubleshooting) 📖
