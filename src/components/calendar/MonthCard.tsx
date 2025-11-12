@@ -21,6 +21,10 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const DAY_CELL_SIZE_CLASSES = 'h-8 w-8 md:h-10 md:w-10';
+const DAY_OF_WEEK_LABEL_CLASSES = `flex items-center justify-center text-[11px] font-semibold leading-tight text-muted-foreground ${DAY_CELL_SIZE_CLASSES}`;
+const EMPTY_SLOT_CLASSES = `${DAY_CELL_SIZE_CLASSES} pointer-events-none select-none opacity-0`;
+
 export enum DayType {
   NORMAL = 'normal',
   WEEKEND = 'weekend',
@@ -69,8 +73,10 @@ const isToday = (date: Date) => {
 const getDayClasses = (type: DayType, options: { isToday?: boolean } = {}) => {
   const { isToday = false } = options;
 
-  const baseClasses =
-    'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors';
+  const baseClasses = cn(
+    DAY_CELL_SIZE_CLASSES,
+    'flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors',
+  );
 
   const typeClasses = {
     [DayType.NORMAL]: 'hover:bg-muted/80',
@@ -182,7 +188,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
     for (let i = 0; i < firstDayOfMonth; i += 1) {
       result.push(
-        <div key={`empty-${i}`} className="w-8 h-8 md:w-10 md:h-10" />,
+        <div
+          key={`empty-${i}`}
+          className={EMPTY_SLOT_CLASSES}
+          aria-hidden="true"
+        />,
       );
     }
 
@@ -238,7 +248,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
     for (let i = 0; i < trailingSlots; i += 1) {
       result.push(
-        <div key={`empty-trailing-${i}`} className="w-8 h-8 md:w-10 md:h-10" />,
+        <div
+          key={`empty-trailing-${i}`}
+          className={EMPTY_SLOT_CLASSES}
+          aria-hidden="true"
+        />,
       );
     }
 
@@ -280,11 +294,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
           )} ${unitLabel} of ${formatAmount(totalCapacity)} ${unitLabel}`}
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1 justify-items-center">
         {DAYS_OF_WEEK.map((dayLabel) => (
           <div
             key={dayLabel}
-            className="text-xs text-center font-medium text-muted-foreground"
+            className={DAY_OF_WEEK_LABEL_CLASSES}
           >
             {dayLabel}
           </div>

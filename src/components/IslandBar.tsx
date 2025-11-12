@@ -250,7 +250,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                 type="button"
                 onClick={() => toggleTab(tab.type)}
                 className={cn(
-                  'inline-flex items-center gap-1 rounded-2xl border border-transparent px-3 py-1.5 text-xs font-semibold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'flex flex-col items-center gap-0.5 rounded-2xl border border-transparent px-2 py-1 text-[10px] font-medium leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:gap-1 sm:px-3 sm:py-1.5 sm:text-xs',
                   isActive
                     ? 'border-border bg-card text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground/90'
@@ -265,18 +265,19 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
                   damping: 30,
                 }}
               >
-                {tab.legendDotClass ? (
-                  <motion.span
-                    aria-hidden="true"
-                    className={cn('h-3 w-3 rounded-full sm:h-3.5 sm:w-3.5', tab.legendDotClass)}
-                    animate={{ scale: isActive ? [1, 1.15, 1] : 1 }}
-                    transition={{ duration: 0.3 }}
-                  />
-                ) : (
-                  Icon && <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                )}
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sr-only sm:hidden">{tab.label}</span>
+                <div className="flex items-center gap-0.5 sm:gap-1.5">
+                  {tab.legendDotClass ? (
+                    <motion.span
+                      aria-hidden="true"
+                      className={cn('h-3 w-3 rounded-full sm:h-3.5 sm:w-3.5', tab.legendDotClass)}
+                      animate={{ scale: isActive ? [1, 1.15, 1] : 1 }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  ) : (
+                    Icon && <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  )}
+                </div>
+                <span className="leading-tight">{tab.label}</span>
               </motion.button>
             );
           })}
@@ -293,31 +294,32 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="rounded-3xl border border-border bg-card px-5 py-5 text-card-foreground sm:px-7"
+            className="relative rounded-3xl border border-border bg-card px-5 py-5 text-card-foreground sm:px-7"
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                <span className="text-sm font-semibold text-foreground">
+            <button
+              type="button"
+              onClick={() => setActiveTabAndPersist(TabType.NONE)}
+              className="absolute right-4 top-4 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:right-5 sm:top-5"
+              aria-label="Close panel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex flex-col gap-3 pr-10 sm:flex-row sm:items-start sm:justify-between sm:pr-14">
+              <div className="space-y-1">
+                <span className="block text-base font-semibold text-foreground sm:text-lg">
                   {activeTabConfig.panelTitle}
                 </span>
                 {activeTabConfig.panelDescription && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground sm:text-sm">
                     {activeTabConfig.panelDescription}
                   </p>
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
                 {headerActions}
                 {activeTab === TabType.SAVE && <ThemeSwitcher />}
-                <button
-                  type="button"
-                  onClick={() => setActiveTabAndPersist(TabType.NONE)}
-                  className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label="Close panel"
-                >
-                  <X className="h-4 w-4" />
-                </button>
               </div>
             </div>
 
