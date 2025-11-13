@@ -5,6 +5,13 @@ import { Globe, CheckCircle, Trash2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { formatDateLocal, parseDateLocal } from '@/lib/date-utils';
@@ -386,24 +393,33 @@ const HolidaysTab: React.FC = () => {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="relative flex-1">
             <Globe className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <select
-              id="country"
+            <Select
               value={selectedCountry}
-              onChange={(event) => handleCountryChange(event.target.value)}
-              className="w-full rounded-2xl border border-border bg-card py-2 pl-8 pr-3 text-xs text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              onValueChange={handleCountryChange}
               disabled={isLoadingHolidays || isFetchingCountries}
             >
-              {isFetchingCountries && (
-                <option value="" disabled>
-                  Loading countries...
-                </option>
-              )}
-              {availableCountries.map((country) => (
-                <option key={country.code} value={country.code}>
-                  {country.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                id="country"
+                className="!h-9 w-full min-w-0 rounded-2xl border border-border bg-card pl-8 pr-3 text-xs text-foreground shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <SelectValue placeholder={isFetchingCountries ? 'Loading countries...' : 'Select a country'} />
+              </SelectTrigger>
+              <SelectContent
+                className="max-h-72 rounded-2xl border border-border bg-card text-xs shadow-lg"
+                position="popper"
+              >
+                {isFetchingCountries && (
+                  <SelectItem value="__loading" disabled className="text-xs">
+                    Loading countries...
+                  </SelectItem>
+                )}
+                {availableCountries.map((country) => (
+                  <SelectItem key={country.code} value={country.code} className="text-xs">
+                    {country.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-wrap gap-1.5 sm:justify-end">
             {yearTabs.map((tabKey) => {
@@ -454,7 +470,7 @@ const HolidaysTab: React.FC = () => {
           <div className="divide-y divide-border/60">
             <form
               onSubmit={handleAddHoliday}
-              className="flex flex-col gap-3 bg-card px-3 py-2 text-[11px] transition hover:bg-muted/60 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 bg-card px-3 py-1 text-xs transition hover:bg-muted/60 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             >
               <div className="flex flex-col gap-2 sm:min-w-0 sm:flex-1 sm:flex-row sm:items-center sm:gap-3">
                 <Label htmlFor="custom-holiday-name" className="sr-only">
@@ -465,7 +481,7 @@ const HolidaysTab: React.FC = () => {
                   value={customHolidayName}
                   onChange={(event) => setCustomHolidayName(event.target.value)}
                   placeholder="Add custom holiday"
-                  className="!h-8 !text-[11px] w-full min-w-0 flex-1 rounded-2xl border border-border/60 bg-card px-3 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
+                  className="!h-8 !text-[11px] w-full min-w-0 flex-1 rounded-2xl border border-transparent bg-card px-3 font-medium text-foreground !shadow-none transition placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-transparent sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
                 />
                 <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0 sm:gap-2">
                   <div className="w-full sm:w-32">
@@ -477,7 +493,7 @@ const HolidaysTab: React.FC = () => {
                       type="date"
                       value={customHolidayDate}
                       onChange={(event) => setCustomHolidayDate(event.target.value)}
-                      className="!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-border/60 bg-card px-3 text-muted-foreground !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:text-muted-foreground sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
+                      className="!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-transparent bg-card px-3 text-muted-foreground !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-transparent sm:bg-transparent sm:px-0 sm:text-muted-foreground sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0"
                     />
                   </div>
                   <div className="w-full sm:w-32">
@@ -491,7 +507,7 @@ const HolidaysTab: React.FC = () => {
                       onChange={(event) => setCustomHolidayEndDate(event.target.value)}
                       placeholder="End date (optional)"
                       className={cn(
-                        '!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-border/60 bg-card px-3 !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-border/40 sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0',
+                        '!h-8 !text-[11px] w-full appearance-none rounded-2xl border border-transparent bg-card px-3 !shadow-none transition focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring sm:!h-7 sm:rounded-none sm:border-0 sm:border-b sm:border-transparent sm:bg-transparent sm:px-0 sm:focus-visible:border-b sm:focus-visible:border-primary/50 sm:focus-visible:ring-0',
                         customHolidayEndDate
                           ? 'text-foreground'
                           : 'text-muted-foreground opacity-60 focus-visible:opacity-100'
@@ -513,11 +529,11 @@ const HolidaysTab: React.FC = () => {
               </div>
               <Button
                 type="submit"
-                size="sm"
+                size="icon"
                 disabled={
                   isAddingHoliday || !customHolidayName.trim() || !customHolidayDate
                 }
-                className="h-9 w-full shrink-0 rounded-2xl px-3 text-[11px] sm:h-7 sm:w-auto"
+                className="h-7 w-full shrink-0 rounded-2xl px-3 text-[11px] sm:h-7 sm:w-auto sm:px-3"
               >
                 {isAddingHoliday ? 'Adding…' : 'Add'}
               </Button>
