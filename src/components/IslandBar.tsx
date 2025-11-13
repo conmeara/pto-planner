@@ -149,12 +149,12 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
 
   const scrollActivePanelIntoView = useCallback(() => {
     if (typeof window === 'undefined') {
-      return;
+      return false;
     }
 
     const panel = panelRef.current;
     if (!panel) {
-      return;
+      return false;
     }
 
     const menuHeight = menuContainerRef.current?.getBoundingClientRect().height ?? 0;
@@ -166,7 +166,11 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
     const targetScrollTop = Math.max(panelTop - stickyOffset, 0);
 
     if (panelTopRelativeToViewport >= stickyOffset) {
-      return;
+      return false;
+    }
+
+    if (Math.abs(window.scrollY - targetScrollTop) < 1) {
+      return false;
     }
 
     const prefersReducedMotion =
@@ -176,6 +180,8 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
       top: targetScrollTop,
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
     });
+
+    return true;
   }, []);
 
   useEffect(() => {
@@ -198,7 +204,12 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
     (tab: TabType) => {
       setActiveTabAndPersist((current) => {
         if (current === tab) {
-          scrollActivePanelIntoView();
+          const didScroll = scrollActivePanelIntoView();
+
+          if (!didScroll) {
+            return TabType.NONE;
+          }
+
           return current;
         }
 

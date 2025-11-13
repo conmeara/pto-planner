@@ -508,7 +508,7 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
               type="date"
               value={localSettings.asOfDate}
               onChange={handleChange}
-              className="!h-9 pl-9 pr-3 text-xs"
+              className="!h-9 appearance-none pl-9 pr-3 text-xs"
             />
           </div>
         </div>
@@ -588,7 +588,7 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
                 type="date"
                 value={localSettings.carryoverResetDate}
                 onChange={handleChange}
-                className="!h-9 pr-3 text-xs"
+                className="!h-9 appearance-none pr-3 text-xs"
               />
             </div>
 
