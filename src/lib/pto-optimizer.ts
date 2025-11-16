@@ -1,529 +1,554 @@
 /**
- * PTO Optimization Engine
+ * Gap-filling PTO optimization engine
  *
- * This module provides intelligent PTO suggestion algorithms that help users
- * maximize their time off by strategically selecting days around weekends and holidays.
+ * Generates consecutive-day break suggestions by identifying the working-day gaps
+ * between existing non-working anchors (weekends, holidays, optionally existing PTO)
+ * and ranking the most efficient ways to fill those gaps with PTO.
  */
 
-import type { StrategyType } from '@/types';
+import type {
+  AnchorInfo,
+  AnchorType,
+  OptimizationResult,
+  RankingMode,
+  SuggestionPreferences,
+  SuggestedBreak,
+} from '@/types';
 
-// ============================================================================
-// Types
-// ============================================================================
+// -----------------------------------------------------------------------------
+// Config
+// -----------------------------------------------------------------------------
 
 export interface PTOOptimizerConfig {
-  year: number;
-  availableDays: number;
-  weekendDays: number[]; // [0, 6] for Saturday/Sunday
-  holidays: Date[]; // Array of holiday dates
-  existingPTODays?: Date[]; // Already selected PTO days
+  availablePTO: number;
+  weekendDays: number[];
+  holidays: Date[];
+  selectedPTODays?: Date[];
 }
 
-export interface SuggestedPeriod {
-  startDate: Date;
-  endDate: Date;
-  ptoDaysRequired: number;
-  totalDaysOff: number;
-  efficiency: number; // totalDaysOff / ptoDaysRequired
+type AnchorSource = 'weekend' | 'holiday' | 'existing';
+
+interface DayInfo {
+  date: Date;
+  isWeekend: boolean;
+  isHoliday: boolean;
+  isExisting: boolean;
+  isNonWorking: boolean;
+  anchorSources: Set<AnchorSource>;
 }
 
-export interface OptimizationResult {
-  suggestedDays: Date[];
-  periods: SuggestedPeriod[];
-  totalPTOUsed: number;
-  totalDaysOff: number;
-  averageEfficiency: number;
+type SegmentKind = 'non-working' | 'working';
+
+interface Segment {
+  kind: SegmentKind;
+  start: Date;
+  end: Date;
+  days: Date[];
+  anchorSources?: Set<AnchorSource>;
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Check if a date is a weekend
- */
-function isWeekend(date: Date, weekendDays: number[]): boolean {
-  return weekendDays.includes(date.getDay());
+interface AnchorSegmentInternal {
+  start: Date;
+  end: Date;
+  days: Date[];
+  type: AnchorType;
+  countsTowardRun: boolean;
+  sources: Set<AnchorSource>;
 }
 
-/**
- * Check if a date is a holiday
- */
-function isHoliday(date: Date, holidays: Date[]): boolean {
-  return holidays.some(
-    (holiday) =>
-      holiday.getFullYear() === date.getFullYear() &&
-      holiday.getMonth() === date.getMonth() &&
-      holiday.getDate() === date.getDate()
-  );
-}
+type BoundaryPosition = 'start' | 'end';
 
-/**
- * Check if a date is a weekend or holiday
- */
-function isNonWorkingDay(date: Date, weekendDays: number[], holidays: Date[]): boolean {
-  return isWeekend(date, weekendDays) || isHoliday(date, holidays);
-}
+// -----------------------------------------------------------------------------
+// Date helpers
+// -----------------------------------------------------------------------------
 
-/**
- * Check if a date is in the past (before today)
- */
-function isPastDate(date: Date): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const checkDate = new Date(date);
-  checkDate.setHours(0, 0, 0, 0);
-  return checkDate < today;
-}
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+});
 
-/**
- * Check if a date is already selected as PTO
- */
-function isAlreadySelected(date: Date, existingPTODays: Date[]): boolean {
-  return existingPTODays.some(
-    (pto) =>
-      pto.getFullYear() === date.getFullYear() &&
-      pto.getMonth() === date.getMonth() &&
-      pto.getDate() === date.getDate()
-  );
-}
+const startOfDay = (input: Date): Date => {
+  const date = new Date(input);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
 
-/**
- * Add days to a date
- */
-function addDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
+const addDays = (date: Date, days: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
 
-/**
- * Get all dates in a range (inclusive)
- */
-function getDateRange(startDate: Date, endDate: Date): Date[] {
-  const dates: Date[] = [];
-  const current = new Date(startDate);
+const compareAsc = (a: Date, b: Date): number => a.getTime() - b.getTime();
 
-  while (current <= endDate) {
-    dates.push(new Date(current));
-    current.setDate(current.getDate() + 1);
+const dateKey = (date: Date): string => startOfDay(date).toISOString();
+
+const formatDate = (date: Date): string => DATE_FORMATTER.format(date);
+
+const formatDateRange = (start: Date, end: Date): string => {
+  if (start.getTime() === end.getTime()) {
+    return formatDate(start);
+  }
+  return `${formatDate(start)} – ${formatDate(end)}`;
+};
+
+// -----------------------------------------------------------------------------
+// Anchor helpers
+// -----------------------------------------------------------------------------
+
+const shouldCountAnchor = (sources: Set<AnchorSource>, extendExisting: boolean): boolean => {
+  if (sources.has('weekend') || sources.has('holiday')) {
+    return true;
+  }
+  if (sources.has('existing') && extendExisting) {
+    return true;
+  }
+  return false;
+};
+
+const deriveAnchorType = (sources: Set<AnchorSource>, boundary?: BoundaryPosition): AnchorType => {
+  if (boundary === 'start') {
+    return 'boundary-start';
+  }
+  if (boundary === 'end') {
+    return 'boundary-end';
   }
 
-  return dates;
-}
+  const hasWeekend = sources.has('weekend');
+  const hasHoliday = sources.has('holiday');
+  const hasExisting = sources.has('existing');
 
-/**
- * Count consecutive non-working days around a date range
- */
-function countTotalDaysOff(
-  startDate: Date,
-  endDate: Date,
-  weekendDays: number[],
-  holidays: Date[]
-): { totalDays: number; ptoDaysRequired: number } {
-  let totalDays = 0;
-  let ptoDaysRequired = 0;
-  let current = new Date(startDate);
+  if (hasWeekend && hasHoliday) {
+    return 'mixed';
+  }
+  if (hasWeekend) {
+    return 'weekend';
+  }
+  if (hasHoliday) {
+    return 'holiday';
+  }
+  if (hasExisting) {
+    return 'existing';
+  }
+  return 'existing';
+};
 
-  // Expand backwards to include leading weekends/holidays
-  while (isNonWorkingDay(addDays(current, -1), weekendDays, holidays)) {
-    current = addDays(current, -1);
+const buildAnchorInfo = (segment: AnchorSegmentInternal | null): AnchorInfo | null => {
+  if (!segment) {
+    return null;
   }
 
-  // Expand forwards to include trailing weekends/holidays
-  let end = new Date(endDate);
-  while (isNonWorkingDay(addDays(end, 1), weekendDays, holidays)) {
-    end = addDays(end, 1);
-  }
-
-  // Count days
-  const allDates = getDateRange(current, end);
-  for (const date of allDates) {
-    totalDays++;
-    if (!isNonWorkingDay(date, weekendDays, holidays)) {
-      ptoDaysRequired++;
+  const labelPrefix = (() => {
+    switch (segment.type) {
+      case 'weekend':
+        return 'Weekend';
+      case 'holiday':
+        return 'Holiday';
+      case 'mixed':
+        return 'Holiday + Weekend';
+      case 'existing':
+        return 'Existing PTO';
+      case 'boundary-start':
+        return 'Timeframe start';
+      case 'boundary-end':
+        return 'Timeframe end';
+      default:
+        return 'Anchor';
     }
-  }
-
-  return { totalDays, ptoDaysRequired };
-}
-
-/**
- * Find "bridge days" - workdays between weekends/holidays
- * These are the most efficient days to take off
- */
-function findBridgeDays(
-  year: number,
-  weekendDays: number[],
-  holidays: Date[],
-  existingPTODays: Date[] = []
-): Array<{ date: Date; efficiency: number; totalDaysOff: number }> {
-  const bridges: Array<{ date: Date; efficiency: number; totalDaysOff: number }> = [];
-
-  // Check every day of the year
-  for (let month = 0; month < 12; month++) {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
-
-      // Skip if in the past
-      if (isPastDate(date)) continue;
-
-      // Skip if already selected as PTO
-      if (isAlreadySelected(date, existingPTODays)) continue;
-
-      // Skip if it's already a non-working day
-      if (isNonWorkingDay(date, weekendDays, holidays)) continue;
-
-      // Check if this workday is adjacent to non-working days
-      const prevDay = addDays(date, -1);
-      const nextDay = addDays(date, 1);
-
-      const prevIsNonWorking = isNonWorkingDay(prevDay, weekendDays, holidays);
-      const nextIsNonWorking = isNonWorkingDay(nextDay, weekendDays, holidays);
-
-      // If surrounded by non-working days on both sides, it's a bridge
-      if (prevIsNonWorking && nextIsNonWorking) {
-        const { totalDays, ptoDaysRequired } = countTotalDaysOff(date, date, weekendDays, holidays);
-        const efficiency = totalDays / ptoDaysRequired;
-
-        bridges.push({ date, efficiency, totalDaysOff: totalDays });
-      }
-    }
-  }
-
-  // Sort by efficiency (highest first)
-  return bridges.sort((a, b) => b.efficiency - a.efficiency);
-}
-
-/**
- * Find consecutive workday sequences (for longer vacations)
- */
-function findWorkdaySequences(
-  year: number,
-  minDays: number,
-  maxDays: number,
-  weekendDays: number[],
-  holidays: Date[],
-  existingPTODays: Date[] = []
-): SuggestedPeriod[] {
-  const sequences: SuggestedPeriod[] = [];
-
-  for (let month = 0; month < 12; month++) {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    for (let startDay = 1; startDay <= daysInMonth; startDay++) {
-      const startDate = new Date(year, month, startDay);
-
-      // Skip if starting in the past
-      if (isPastDate(startDate)) continue;
-
-      // Skip if starting on a non-working day
-      if (isNonWorkingDay(startDate, weekendDays, holidays)) continue;
-
-      // Try different sequence lengths
-      for (let length = minDays; length <= maxDays; length++) {
-        const endDate = addDays(startDate, length - 1);
-
-        // Make sure we're still in the same year
-        if (endDate.getFullYear() !== year) break;
-
-        // Count how many are actual workdays
-        const dates = getDateRange(startDate, endDate);
-        const workdays = dates.filter((d) => !isNonWorkingDay(d, weekendDays, holidays));
-
-        // Skip if any workday in this sequence is already selected
-        const hasConflict = workdays.some((d) => isAlreadySelected(d, existingPTODays));
-        if (hasConflict) continue;
-
-        // If too many non-working days in the middle, skip
-        if (workdays.length < length * 0.6) continue;
-
-        const { totalDays, ptoDaysRequired } = countTotalDaysOff(
-          startDate,
-          endDate,
-          weekendDays,
-          holidays
-        );
-
-        sequences.push({
-          startDate,
-          endDate,
-          ptoDaysRequired: workdays.length,
-          totalDaysOff: totalDays,
-          efficiency: totalDays / workdays.length,
-        });
-      }
-    }
-  }
-
-  // Sort by efficiency
-  return sequences.sort((a, b) => b.efficiency - a.efficiency);
-}
-
-// ============================================================================
-// Strategy Implementations
-// ============================================================================
-
-/**
- * Balanced Mix Strategy
- * Combination of short breaks and longer vacations
- */
-function optimizeBalancedMix(config: PTOOptimizerConfig): OptimizationResult {
-  const { year, availableDays, weekendDays, holidays, existingPTODays = [] } = config;
-  const suggestedDays: Date[] = [];
-  const periods: SuggestedPeriod[] = [];
-
-  // Get bridge days and sequences
-  const bridges = findBridgeDays(year, weekendDays, holidays, existingPTODays);
-  const longSequences = findWorkdaySequences(year, 5, 7, weekendDays, holidays, existingPTODays);
-
-  let remainingDays = availableDays;
-
-  // First, add 1-2 longer breaks (5-7 days)
-  const targetLongBreaks = Math.min(2, Math.floor(availableDays / 7));
-  let addedLongBreaks = 0;
-
-  for (const sequence of longSequences) {
-    if (addedLongBreaks >= targetLongBreaks) break;
-    if (sequence.ptoDaysRequired > remainingDays) continue;
-
-    // Add all workdays in this period
-    const dates = getDateRange(sequence.startDate, sequence.endDate);
-    const workdays = dates.filter((d) => !isNonWorkingDay(d, weekendDays, holidays));
-
-    suggestedDays.push(...workdays);
-    periods.push(sequence);
-    remainingDays -= workdays.length;
-    addedLongBreaks++;
-  }
-
-  // Then fill with bridge days (long weekends)
-  for (const bridge of bridges) {
-    if (remainingDays <= 0) break;
-
-    // Avoid overlaps
-    if (suggestedDays.some((d) => d.getTime() === bridge.date.getTime())) continue;
-
-    suggestedDays.push(bridge.date);
-    remainingDays--;
-  }
-
-  return calculateResult(suggestedDays, periods, availableDays, weekendDays, holidays);
-}
-
-/**
- * Long Weekends Strategy
- * Focus on 3-4 day breaks by bridging weekends
- */
-function optimizeLongWeekends(config: PTOOptimizerConfig): OptimizationResult {
-  const { year, availableDays, weekendDays, holidays, existingPTODays = [] } = config;
-  const suggestedDays: Date[] = [];
-  const periods: SuggestedPeriod[] = [];
-
-  // Get all bridge opportunities
-  const bridges = findBridgeDays(year, weekendDays, holidays, existingPTODays);
-
-  let remainingDays = availableDays;
-
-  // Take the best bridge days
-  for (const bridge of bridges) {
-    if (remainingDays <= 0) break;
-
-    suggestedDays.push(bridge.date);
-    remainingDays--;
-  }
-
-  return calculateResult(suggestedDays, periods, availableDays, weekendDays, holidays);
-}
-
-/**
- * Mini Breaks Strategy
- * Several 5-6 day breaks spread across the year
- */
-function optimizeMiniBreaks(config: PTOOptimizerConfig): OptimizationResult {
-  const { year, availableDays, weekendDays, holidays, existingPTODays = [] } = config;
-  const suggestedDays: Date[] = [];
-  const periods: SuggestedPeriod[] = [];
-
-  // Find 5-6 day sequences
-  const sequences = findWorkdaySequences(year, 3, 5, weekendDays, holidays, existingPTODays);
-
-  let remainingDays = availableDays;
-
-  for (const sequence of sequences) {
-    if (sequence.ptoDaysRequired > remainingDays) continue;
-
-    const dates = getDateRange(sequence.startDate, sequence.endDate);
-    const workdays = dates.filter((d) => !isNonWorkingDay(d, weekendDays, holidays));
-
-    // Avoid overlaps
-    const hasOverlap = workdays.some((wd) =>
-      suggestedDays.some((sd) => sd.getTime() === wd.getTime())
-    );
-    if (hasOverlap) continue;
-
-    suggestedDays.push(...workdays);
-    periods.push(sequence);
-    remainingDays -= workdays.length;
-  }
-
-  return calculateResult(suggestedDays, periods, availableDays, weekendDays, holidays);
-}
-
-/**
- * Week-Long Breaks Strategy
- * 7-9 day getaways
- */
-function optimizeWeekLong(config: PTOOptimizerConfig): OptimizationResult {
-  const { year, availableDays, weekendDays, holidays, existingPTODays = [] } = config;
-  const suggestedDays: Date[] = [];
-  const periods: SuggestedPeriod[] = [];
-
-  // Find 7-9 day sequences
-  const sequences = findWorkdaySequences(year, 5, 9, weekendDays, holidays, existingPTODays);
-
-  let remainingDays = availableDays;
-
-  for (const sequence of sequences) {
-    if (sequence.ptoDaysRequired > remainingDays) continue;
-
-    const dates = getDateRange(sequence.startDate, sequence.endDate);
-    const workdays = dates.filter((d) => !isNonWorkingDay(d, weekendDays, holidays));
-
-    // Avoid overlaps
-    const hasOverlap = workdays.some((wd) =>
-      suggestedDays.some((sd) => sd.getTime() === wd.getTime())
-    );
-    if (hasOverlap) continue;
-
-    suggestedDays.push(...workdays);
-    periods.push(sequence);
-    remainingDays -= workdays.length;
-  }
-
-  return calculateResult(suggestedDays, periods, availableDays, weekendDays, holidays);
-}
-
-/**
- * Extended Vacations Strategy
- * 10-15 day breaks for deeper relaxation
- */
-function optimizeExtended(config: PTOOptimizerConfig): OptimizationResult {
-  const { year, availableDays, weekendDays, holidays, existingPTODays = [] } = config;
-  const suggestedDays: Date[] = [];
-  const periods: SuggestedPeriod[] = [];
-
-  // Find 10-15 day sequences
-  const sequences = findWorkdaySequences(year, 8, 15, weekendDays, holidays, existingPTODays);
-
-  let remainingDays = availableDays;
-
-  for (const sequence of sequences) {
-    if (sequence.ptoDaysRequired > remainingDays) continue;
-
-    const dates = getDateRange(sequence.startDate, sequence.endDate);
-    const workdays = dates.filter((d) => !isNonWorkingDay(d, weekendDays, holidays));
-
-    // Avoid overlaps
-    const hasOverlap = workdays.some((wd) =>
-      suggestedDays.some((sd) => sd.getTime() === wd.getTime())
-    );
-    if (hasOverlap) continue;
-
-    suggestedDays.push(...workdays);
-    periods.push(sequence);
-    remainingDays -= workdays.length;
-  }
-
-  return calculateResult(suggestedDays, periods, availableDays, weekendDays, holidays);
-}
-
-/**
- * Calculate optimization result
- */
-function calculateResult(
-  suggestedDays: Date[],
-  periods: SuggestedPeriod[],
-  availableDays: number,
-  weekendDays: number[],
-  holidays: Date[]
+  })();
+
+  const label =
+    segment.type === 'boundary-start' || segment.type === 'boundary-end'
+      ? labelPrefix
+      : `${labelPrefix} (${formatDateRange(segment.start, segment.end)})`;
+
+  return {
+    start: segment.start,
+    end: segment.end,
+    dayCount: segment.days.length,
+    type: segment.type,
+    label,
+    countsTowardRun: segment.countsTowardRun,
+  };
+};
+
+const createBoundaryAnchor = (
+  position: BoundaryPosition,
+  reference: Date
+): AnchorSegmentInternal => ({
+  start: reference,
+  end: reference,
+  days: [],
+  type: position === 'start' ? 'boundary-start' : 'boundary-end',
+  countsTowardRun: false,
+  sources: new Set(),
+});
+
+const toAnchorSegment = (
+  segment: Segment,
+  extendExisting: boolean
+): AnchorSegmentInternal => {
+  const sources = segment.anchorSources ?? new Set<AnchorSource>();
+  return {
+    start: segment.start,
+    end: segment.end,
+    days: segment.days,
+    type: deriveAnchorType(sources),
+    countsTowardRun: shouldCountAnchor(sources, extendExisting),
+    sources,
+  };
+};
+
+// -----------------------------------------------------------------------------
+// Core algorithm
+// -----------------------------------------------------------------------------
+
+export function optimizePTO(
+  config: PTOOptimizerConfig,
+  preferences: SuggestionPreferences
 ): OptimizationResult {
-  const totalPTOUsed = suggestedDays.length;
+  const sanitized = sanitizePreferences(preferences, config.availablePTO);
+  const { earliestStart, latestEnd } = sanitized;
 
-  // Calculate total days off (including adjacent weekends/holidays)
-  let totalDaysOff = 0;
-  const processedDates = new Set<string>();
-
-  for (const day of suggestedDays) {
-    if (processedDates.has(day.toISOString())) continue;
-
-    // Find the full consecutive period including this day
-    let start = new Date(day);
-    let end = new Date(day);
-
-    // Expand backwards
-    while (
-      isNonWorkingDay(addDays(start, -1), weekendDays, holidays) ||
-      suggestedDays.some((d) => d.getTime() === addDays(start, -1).getTime())
-    ) {
-      start = addDays(start, -1);
-    }
-
-    // Expand forwards
-    while (
-      isNonWorkingDay(addDays(end, 1), weekendDays, holidays) ||
-      suggestedDays.some((d) => d.getTime() === addDays(end, 1).getTime())
-    ) {
-      end = addDays(end, 1);
-    }
-
-    // Count all days in this period
-    const periodDates = getDateRange(start, end);
-    for (const date of periodDates) {
-      const dateStr = date.toISOString();
-      if (!processedDates.has(dateStr)) {
-        totalDaysOff++;
-        processedDates.add(dateStr);
-      }
-    }
+  if (earliestStart > latestEnd) {
+    return emptyResult();
   }
 
-  const averageEfficiency = totalPTOUsed > 0 ? totalDaysOff / totalPTOUsed : 0;
+  const availableBudget = Math.max(
+    0,
+    Math.min(Math.floor(config.availablePTO), sanitized.maxPTOToUse)
+  );
+
+  if (availableBudget <= 0 || sanitized.maxPTOPerBreak <= 0 || sanitized.maxSuggestions <= 0) {
+    return {
+      ...emptyResult(),
+      remainingPTO: Math.max(0, availableBudget),
+    };
+  }
+
+  const weekendSet = new Set(config.weekendDays);
+  const holidaySet = new Set(config.holidays.map((date) => dateKey(date)));
+  const selectedSet = new Set((config.selectedPTODays ?? []).map((date) => dateKey(date)));
+
+  const timeline = buildTimeline(
+    earliestStart,
+    latestEnd,
+    weekendSet,
+    holidaySet,
+    selectedSet
+  );
+
+  if (timeline.length === 0) {
+    return {
+      ...emptyResult(),
+      remainingPTO: availableBudget,
+    };
+  }
+
+  const candidateBreaks = buildCandidateBreaks(
+    timeline,
+    sanitized,
+    earliestStart,
+    latestEnd
+  );
+
+  if (candidateBreaks.length === 0) {
+    return {
+      ...emptyResult(),
+      remainingPTO: availableBudget,
+    };
+  }
+
+  const sortedCandidates = sortCandidates(candidateBreaks, sanitized.rankingMode);
+  const selectedBreaks: SuggestedBreak[] = [];
+  let remainingBudget = availableBudget;
+
+  for (const candidate of sortedCandidates) {
+    if (selectedBreaks.length >= sanitized.maxSuggestions) {
+      break;
+    }
+    if (candidate.ptoRequired > remainingBudget) {
+      continue;
+    }
+    if (isOverlapping(candidate, selectedBreaks, sanitized.minSpacingBetweenBreaks)) {
+      continue;
+    }
+
+    selectedBreaks.push(candidate);
+    remainingBudget -= candidate.ptoRequired;
+  }
+
+  const suggestedDays = dedupeAndSortDates(
+    selectedBreaks.flatMap((breakItem) => breakItem.ptoDays)
+  );
+
+  const totalPTOUsed = selectedBreaks.reduce((sum, item) => sum + item.ptoRequired, 0);
+  const totalDaysOff = selectedBreaks.reduce((sum, item) => sum + item.totalDaysOff, 0);
 
   return {
     suggestedDays,
-    periods,
+    breaks: selectedBreaks,
     totalPTOUsed,
     totalDaysOff,
-    averageEfficiency,
+    averageEfficiency: totalPTOUsed > 0 ? totalDaysOff / totalPTOUsed : 0,
+    remainingPTO: Math.max(0, remainingBudget),
   };
 }
 
-// ============================================================================
-// Main Optimizer Function
-// ============================================================================
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 
-/**
- * Optimize PTO based on selected strategy
- */
-export function optimizePTO(
-  strategy: StrategyType,
-  config: PTOOptimizerConfig
-): OptimizationResult {
-  switch (strategy) {
-    case 'balanced':
-      return optimizeBalancedMix(config);
-    case 'long-weekends':
-      return optimizeLongWeekends(config);
-    case 'mini-breaks':
-      return optimizeMiniBreaks(config);
-    case 'week-long':
-      return optimizeWeekLong(config);
-    case 'extended':
-      return optimizeExtended(config);
-    default:
-      throw new Error(`Unknown strategy: ${strategy}`);
+const emptyResult = (): OptimizationResult => ({
+  suggestedDays: [],
+  breaks: [],
+  totalPTOUsed: 0,
+  totalDaysOff: 0,
+  averageEfficiency: 0,
+  remainingPTO: 0,
+});
+
+const sanitizePreferences = (
+  preferences: SuggestionPreferences,
+  availablePTO: number
+) => {
+  const today = startOfDay(new Date());
+  let earliest = startOfDay(preferences.earliestStart);
+  let latest = startOfDay(preferences.latestEnd);
+
+  if (latest < earliest) {
+    [earliest, latest] = [latest, earliest];
   }
-}
+
+  earliest = compareAsc(earliest, today) < 0 ? today : earliest;
+
+  const maxPTOBudget = Math.max(0, Math.floor(preferences.maxPTOToUse));
+  const absoluteBudget = Math.max(0, Math.floor(availablePTO));
+  const maxPTOPerBreak = Math.max(1, Math.floor(preferences.maxPTOPerBreak));
+  const minDaysOff = Math.max(1, Math.floor(preferences.minConsecutiveDaysOff));
+  const maxSuggestions = Math.max(0, Math.floor(preferences.maxSuggestions));
+  const minSpacing = Math.max(0, Math.floor(preferences.minSpacingBetweenBreaks));
+  const rankingMode: RankingMode = preferences.rankingMode ?? 'efficiency';
+
+  return {
+    earliestStart: earliest,
+    latestEnd: latest,
+    maxPTOToUse: Math.min(maxPTOBudget, absoluteBudget),
+    maxPTOPerBreak,
+    minConsecutiveDaysOff: minDaysOff,
+    maxSuggestions,
+    rankingMode,
+    minSpacingBetweenBreaks: minSpacing,
+    extendExistingPTO: preferences.extendExistingPTO,
+  };
+};
+
+const buildTimeline = (
+  start: Date,
+  end: Date,
+  weekendSet: Set<number>,
+  holidaySet: Set<string>,
+  selectedSet: Set<string>
+): Segment[] => {
+  const segments: Segment[] = [];
+  let current: Segment | null = null;
+
+  for (
+    let cursor = new Date(start);
+    compareAsc(cursor, end) <= 0;
+    cursor = addDays(cursor, 1)
+  ) {
+    const date = startOfDay(cursor);
+    const key = dateKey(date);
+
+    const isWeekend = weekendSet.has(date.getDay());
+    const isHoliday = holidaySet.has(key);
+    const isExisting = selectedSet.has(key);
+    const isNonWorking = isWeekend || isHoliday || isExisting;
+    const anchorSources = new Set<AnchorSource>();
+
+    if (isWeekend) anchorSources.add('weekend');
+    if (isHoliday) anchorSources.add('holiday');
+    if (isExisting) anchorSources.add('existing');
+
+    const kind: SegmentKind = isNonWorking ? 'non-working' : 'working';
+    const dayClone = new Date(date);
+
+    if (!current || current.kind !== kind) {
+      if (current) {
+        segments.push(current);
+      }
+      current = {
+        kind,
+        start: dayClone,
+        end: dayClone,
+        days: [dayClone],
+        anchorSources: kind === 'non-working' ? anchorSources : undefined,
+      };
+    } else {
+      current.end = dayClone;
+      current.days.push(dayClone);
+      if (kind === 'non-working' && current.anchorSources) {
+        anchorSources.forEach((source) => current!.anchorSources!.add(source));
+      }
+    }
+  }
+
+  if (current) {
+    segments.push(current);
+  }
+
+  return segments;
+};
+
+const buildCandidateBreaks = (
+  segments: Segment[],
+  preferences: ReturnType<typeof sanitizePreferences>,
+  rangeStart: Date,
+  rangeEnd: Date
+): SuggestedBreak[] => {
+  const candidates: SuggestedBreak[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment.kind !== 'working' || segment.days.length === 0) {
+      continue;
+    }
+
+    const prevAnchorSegment = findNeighborAnchor(
+      segments,
+      i,
+      'backward',
+      preferences.extendExistingPTO
+    ) ?? createBoundaryAnchor('start', rangeStart);
+
+    const nextAnchorSegment = findNeighborAnchor(
+      segments,
+      i,
+      'forward',
+      preferences.extendExistingPTO
+    ) ?? createBoundaryAnchor('end', rangeEnd);
+
+    const workdays = segment.days;
+    const ptoRequired = workdays.length;
+
+    if (ptoRequired === 0 || ptoRequired > preferences.maxPTOPerBreak) {
+      continue;
+    }
+
+    const totalDaysOff =
+      ptoRequired +
+      (prevAnchorSegment.countsTowardRun ? prevAnchorSegment.days.length : 0) +
+      (nextAnchorSegment.countsTowardRun ? nextAnchorSegment.days.length : 0);
+
+    if (totalDaysOff < preferences.minConsecutiveDaysOff) {
+      continue;
+    }
+
+    const breakStart = prevAnchorSegment.countsTowardRun
+      ? prevAnchorSegment.start
+      : workdays[0];
+    const breakEnd = nextAnchorSegment.countsTowardRun
+      ? nextAnchorSegment.end
+      : workdays[workdays.length - 1];
+
+    const breakCandidate: SuggestedBreak = {
+      id: `${dateKey(breakStart)}_${dateKey(breakEnd)}_${ptoRequired}`,
+      start: breakStart,
+      end: breakEnd,
+      ptoDays: [...workdays],
+      ptoRequired,
+      totalDaysOff,
+      efficiency: totalDaysOff / ptoRequired,
+      anchors: {
+        before: buildAnchorInfo(prevAnchorSegment),
+        after: buildAnchorInfo(nextAnchorSegment),
+      },
+    };
+
+    candidates.push(breakCandidate);
+  }
+
+  return candidates;
+};
+
+const findNeighborAnchor = (
+  segments: Segment[],
+  fromIndex: number,
+  direction: 'forward' | 'backward',
+  extendExisting: boolean
+): AnchorSegmentInternal | null => {
+  const step = direction === 'forward' ? 1 : -1;
+
+  for (let i = fromIndex + step; i >= 0 && i < segments.length; i += step) {
+    if (segments[i].kind === 'non-working') {
+      return toAnchorSegment(segments[i], extendExisting);
+    }
+  }
+
+  return null;
+};
+
+const sortCandidates = (candidates: SuggestedBreak[], mode: RankingMode): SuggestedBreak[] => {
+  const clone = [...candidates];
+
+  clone.sort((a, b) => {
+    switch (mode) {
+      case 'longest':
+        return (
+          b.totalDaysOff - a.totalDaysOff ||
+          a.ptoRequired - b.ptoRequired ||
+          compareAsc(a.start, b.start)
+        );
+      case 'least-pto':
+        return (
+          a.ptoRequired - b.ptoRequired ||
+          b.efficiency - a.efficiency ||
+          compareAsc(a.start, b.start)
+        );
+      case 'earliest':
+        return (
+          compareAsc(a.start, b.start) ||
+          b.totalDaysOff - a.totalDaysOff ||
+          a.ptoRequired - b.ptoRequired
+        );
+      case 'efficiency':
+      default:
+        return (
+          b.efficiency - a.efficiency ||
+          b.totalDaysOff - a.totalDaysOff ||
+          a.ptoRequired - b.ptoRequired ||
+          compareAsc(a.start, b.start)
+        );
+    }
+  });
+
+  return clone;
+};
+
+const isOverlapping = (
+  candidate: SuggestedBreak,
+  existing: SuggestedBreak[],
+  minSpacing: number
+): boolean => {
+  const minSpacingOffset = Math.max(0, minSpacing);
+
+  return existing.some((breakItem) => {
+    const [first, second] =
+      compareAsc(candidate.start, breakItem.start) <= 0
+        ? [candidate, breakItem]
+        : [breakItem, candidate];
+
+    const earliestNextStart = addDays(first.end, minSpacingOffset + 1);
+    return compareAsc(second.start, earliestNextStart) < 0;
+  });
+};
+
+const dedupeAndSortDates = (dates: Date[]): Date[] => {
+  const map = new Map<string, Date>();
+  dates.forEach((date) => {
+    map.set(dateKey(date), startOfDay(date));
+  });
+
+  return Array.from(map.values()).sort(compareAsc);
+};

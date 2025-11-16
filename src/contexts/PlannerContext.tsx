@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { PlannerData, PTODay, CustomHoliday, StrategyType, PTOSettings, WeekendConfig, ActionResult, PTOAccrualRule } from '@/types';
-import { optimizePTO, type PTOOptimizerConfig, type OptimizationResult } from '@/lib/pto-optimizer';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import type { PlannerData, PTODay, CustomHoliday, PTOSettings, WeekendConfig, ActionResult, PTOAccrualRule, SuggestionPreferences, OptimizationResult, RankingMode } from '@/types';
+import { optimizePTO, type PTOOptimizerConfig } from '@/lib/pto-optimizer';
 import { formatDateLocal, parseDateLocal, isSameDay, matchesHoliday } from '@/lib/date-utils';
 import { addCustomHoliday, batchAddHolidays, clearHolidaysForYear, deleteCustomHoliday } from '@/app/actions/holiday-actions';
 import { migrateLocalDataToDatabase } from '@/app/actions/user-actions';
@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   WEEKEND_CONFIG: 'pto_planner_weekend',
   HOLIDAYS: 'pto_planner_holidays',
   COUNTRY: 'pto_planner_country',
+  SUGGESTION_PREFS: 'pto_planner_suggestion_prefs',
 };
 
 // ============================================================================
@@ -130,6 +131,128 @@ const alignToDayOfWeek = (date: Date, targetDayOfWeek: number): Date => {
   const current = startOfDay(date);
   const diff = (targetDayOfWeek - current.getDay() + 7) % 7;
   return addDays(current, diff);
+};
+
+type StoredSuggestionPreferences = Omit<SuggestionPreferences, 'earliestStart' | 'latestEnd'> & {
+  earliestStart: string;
+  latestEnd: string;
+};
+
+const SUPPORTED_RANKING_MODES: RankingMode[] = ['efficiency', 'longest', 'least-pto', 'earliest'];
+
+const isRankingMode = (value: unknown): value is RankingMode => {
+  return typeof value === 'string' && SUPPORTED_RANKING_MODES.includes(value as RankingMode);
+};
+
+function getDefaultSuggestionPreferences(): SuggestionPreferences {
+  const today = startOfDay(new Date());
+  const endOfYear = startOfDay(new Date(today.getFullYear(), 11, 31));
+
+  return {
+    earliestStart: today,
+    latestEnd: endOfYear,
+    maxPTOToUse: 10,
+    maxPTOPerBreak: 5,
+    minConsecutiveDaysOff: 4,
+    maxSuggestions: 5,
+    rankingMode: 'efficiency',
+    minSpacingBetweenBreaks: 14,
+    extendExistingPTO: true,
+  };
+}
+
+function loadInitialSuggestionPreferences(): SuggestionPreferences {
+  const fallback = getDefaultSuggestionPreferences();
+
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  try {
+    const stored = loadFromLocalStorage<StoredSuggestionPreferences | null>(
+      STORAGE_KEYS.SUGGESTION_PREFS,
+      null
+    );
+
+    if (!stored) {
+      return fallback;
+    }
+
+    const earliest = stored.earliestStart ? startOfDay(new Date(stored.earliestStart)) : fallback.earliestStart;
+    const latest = stored.latestEnd ? startOfDay(new Date(stored.latestEnd)) : fallback.latestEnd;
+
+    const coerceNumber = (value: unknown, defaultValue: number): number => {
+      return typeof value === 'number' && Number.isFinite(value) ? value : defaultValue;
+    };
+
+    return {
+      earliestStart: earliest,
+      latestEnd: latest,
+      maxPTOToUse: coerceNumber(stored.maxPTOToUse, fallback.maxPTOToUse),
+      maxPTOPerBreak: coerceNumber(stored.maxPTOPerBreak, fallback.maxPTOPerBreak),
+      minConsecutiveDaysOff: coerceNumber(stored.minConsecutiveDaysOff, fallback.minConsecutiveDaysOff),
+      maxSuggestions: coerceNumber(stored.maxSuggestions, fallback.maxSuggestions),
+      rankingMode: isRankingMode(stored.rankingMode) ? stored.rankingMode : fallback.rankingMode,
+      minSpacingBetweenBreaks: coerceNumber(stored.minSpacingBetweenBreaks, fallback.minSpacingBetweenBreaks),
+      extendExistingPTO:
+        typeof stored.extendExistingPTO === 'boolean' ? stored.extendExistingPTO : fallback.extendExistingPTO,
+    };
+  } catch (error) {
+    console.warn('Failed to load suggestion preferences, falling back to defaults', error);
+    return fallback;
+  }
+}
+
+function persistSuggestionPreferences(preferences: SuggestionPreferences) {
+  const payload: StoredSuggestionPreferences = {
+    ...preferences,
+    earliestStart: preferences.earliestStart.toISOString(),
+    latestEnd: preferences.latestEnd.toISOString(),
+  };
+  saveToLocalStorage(STORAGE_KEYS.SUGGESTION_PREFS, payload);
+}
+
+const dedupeDateList = (dates: Date[]): Date[] => {
+  const map = new Map<string, Date>();
+  dates.forEach((date) => {
+    const normalized = startOfDay(date);
+    map.set(normalized.toISOString(), normalized);
+  });
+  return Array.from(map.values()).sort((a, b) => a.getTime() - b.getTime());
+};
+
+const expandHolidayDates = (holidays: CustomHoliday[], rangeStart: Date, rangeEnd: Date): Date[] => {
+  if (!holidays.length) {
+    return [];
+  }
+
+  const startYear = rangeStart.getFullYear();
+  const endYear = rangeEnd.getFullYear();
+  const expanded: Date[] = [];
+
+  holidays.forEach((holiday) => {
+    if (!holiday.date) {
+      return;
+    }
+
+    const baseDate = parseDateLocal(holiday.date);
+
+    if (holiday.repeats_yearly) {
+      for (let year = startYear; year <= endYear; year++) {
+        const occurrence = startOfDay(new Date(year, baseDate.getMonth(), baseDate.getDate()));
+        if (occurrence >= rangeStart && occurrence <= rangeEnd) {
+          expanded.push(occurrence);
+        }
+      }
+    } else {
+      const normalized = startOfDay(baseDate);
+      if (normalized >= rangeStart && normalized <= rangeEnd) {
+        expanded.push(normalized);
+      }
+    }
+  });
+
+  return dedupeDateList(expanded);
 };
 
 const getFirstMonthlyOccurrence = (baseDate: Date, dayOfMonth: number): Date => {
@@ -293,18 +416,23 @@ interface PlannerContextType {
   plannerData: PlannerData | null;
   selectedDays: Date[];
   suggestedDays: Date[];
-  currentStrategy: StrategyType | null;
+  suggestionPreferences: SuggestionPreferences;
   lastOptimizationResult: OptimizationResult | null;
   isAuthenticated: boolean;
   countryCode: string;
   isLoadingHolidays: boolean;
+  isGeneratingSuggestions: boolean;
 
   // State setters
   setPlannerData: (data: PlannerData | null) => void;
   setSelectedDays: React.Dispatch<React.SetStateAction<Date[]>>;
   setSuggestedDays: React.Dispatch<React.SetStateAction<Date[]>>;
-  setCurrentStrategy: React.Dispatch<React.SetStateAction<StrategyType | null>>;
   setCountryCode: (country: string) => void;
+  updateSuggestionPreferences: (
+    update:
+      | Partial<SuggestionPreferences>
+      | ((prev: SuggestionPreferences) => SuggestionPreferences)
+  ) => void;
 
   // Helper methods
   isDateSelected: (date: Date) => boolean;
@@ -323,7 +451,7 @@ interface PlannerContextType {
   toggleDaySelection: (date: Date) => void;
   clearSuggestions: () => void;
   applySuggestions: () => void;
-  runOptimization: (strategy: StrategyType, year?: number) => OptimizationResult | null;
+  generateSuggestions: (options?: { silent?: boolean }) => OptimizationResult | null;
   saveLocalSettings: (settings: Partial<PTOSettings>) => void;
   saveLocalWeekendConfig: (weekendDays: number[]) => void;
   saveLocalHolidays: (holidays: CustomHoliday[]) => void;
@@ -361,8 +489,11 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   const [plannerData, setPlannerData] = useState<PlannerData | null>(initialData);
   const [selectedDays, setSelectedDays] = useState<Date[]>([]);
   const [suggestedDays, setSuggestedDays] = useState<Date[]>([]);
-  const [currentStrategy, setCurrentStrategy] = useState<StrategyType | null>(null);
+  const [suggestionPreferences, setSuggestionPreferences] = useState<SuggestionPreferences>(() => loadInitialSuggestionPreferences());
   const [lastOptimizationResult, setLastOptimizationResult] = useState<OptimizationResult | null>(null);
+  const suggestionPreferencesRef = useRef<SuggestionPreferences>(suggestionPreferences);
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState<boolean>(false);
+  const [localWeekendVersion, setLocalWeekendVersion] = useState(0);
   const [countryCodeState, setCountryCodeState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEYS.COUNTRY);
@@ -421,6 +552,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       setSelectedDays(dates);
     }
   }, [plannerData]);
+
+  // Persist suggestion preferences
+  useEffect(() => {
+    suggestionPreferencesRef.current = suggestionPreferences;
+    persistSuggestionPreferences(suggestionPreferences);
+  }, [suggestionPreferences]);
 
   // Migrate localStorage data to database when user first signs in
   useEffect(() => {
@@ -713,6 +850,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Action: Save weekend config to localStorage
   const saveLocalWeekendConfig = useCallback((weekendDays: number[]) => {
     saveToLocalStorage(STORAGE_KEYS.WEEKEND_CONFIG, weekendDays);
+    setLocalWeekendVersion((version) => version + 1);
   }, []);
 
   // Action: Save holidays to localStorage
@@ -1218,7 +1356,6 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Action: Clear all suggestions
   const clearSuggestions = useCallback(() => {
     setSuggestedDays([]);
-    setCurrentStrategy(null);
     setLastOptimizationResult(null);
   }, []);
 
@@ -1240,89 +1377,95 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     clearSuggestions();
   }, [suggestedDays, clearSuggestions]);
 
-  // Action: Run optimization algorithm
-  const runOptimization = useCallback(
-    (strategy: StrategyType, year?: number): OptimizationResult | null => {
-      const targetYear = year || new Date().getFullYear();
+  const updateSuggestionPreferences = useCallback(
+    (
+      update:
+        | Partial<SuggestionPreferences>
+        | ((prev: SuggestionPreferences) => SuggestionPreferences)
+    ) => {
+      setSuggestionPreferences((prev) => {
+        return typeof update === 'function' ? update(prev) : { ...prev, ...update };
+      });
+    },
+    []
+  );
 
-      // Get configuration
-      const settings = getSettings();
-      const weekendDays = getWeekendDays();
-      const holidays = getHolidays();
-
-      // Convert holidays to Date objects for the target year
-      const holidayDates = holidays.map((holiday) => {
-        const holidayDate = parseDateLocal(holiday.date);
-        if (holiday.repeats_yearly) {
-          // For repeating holidays, use the target year
-          return new Date(targetYear, holidayDate.getMonth(), holidayDate.getDate());
-        }
-        // For non-repeating holidays, only include if they're in the target year
-        if (holidayDate.getFullYear() === targetYear) {
-          return holidayDate;
-        }
-        return null;
-      }).filter((d): d is Date => d !== null);
-
-      // Calculate total PTO available for the entire year
-      // Use end-of-year balance to account for accrual throughout the year
-      const endOfYear = new Date(targetYear, 11, 31); // December 31 of target year
-      const totalYearBalance = getBalanceAsOf(endOfYear);
-
-      // For optimization across the full year, use the total allocation
-      // The optimizer will filter out already selected days via existingPTODays
-      const availableDays = Math.max(totalYearBalance, 0);
-
-      if (availableDays <= 0) {
-        console.warn('No PTO days available for optimization');
-        setSuggestedDays([]);
-        setLastOptimizationResult(null);
+  // Action: Run gap-filling optimizer
+  const generateSuggestions = useCallback(
+    (options?: { silent?: boolean }): OptimizationResult | null => {
+      const activePreferences = suggestionPreferencesRef.current;
+      if (!activePreferences) {
         return null;
       }
 
-      // Build optimizer config
-      const config: PTOOptimizerConfig = {
-        year: targetYear,
-        availableDays,
-        weekendDays,
-        holidays: holidayDates,
-        existingPTODays: selectedDays,
-      };
+      const silent = options?.silent ?? false;
+
+      if (!silent) {
+        setIsGeneratingSuggestions(true);
+      }
 
       try {
-        // Run optimization
-        const result = optimizePTO(strategy, config);
+        const weekendDays = getWeekendDays();
+        const holidays = expandHolidayDates(
+          getHolidays(),
+          activePreferences.earliestStart,
+          activePreferences.latestEnd
+        );
+        const timelineEnd = activePreferences.latestEnd;
+        const totalBalance = getBalanceAsOf(timelineEnd);
+        const remainingBalance = Math.max(totalBalance - selectedDays.length, 0);
 
-        // Update suggested days in context
+        const config: PTOOptimizerConfig = {
+          availablePTO: remainingBalance,
+          weekendDays,
+          holidays,
+          selectedPTODays: selectedDays,
+        };
+
+        const result = optimizePTO(config, activePreferences);
         setSuggestedDays(result.suggestedDays);
-        setCurrentStrategy(strategy);
         setLastOptimizationResult(result);
-
         return result;
       } catch (error) {
         console.error('Optimization error:', error);
         setLastOptimizationResult(null);
         return null;
+      } finally {
+        if (!silent) {
+          setIsGeneratingSuggestions(false);
+        }
       }
     },
-    [getSettings, getWeekendDays, getHolidays, getBalanceAsOf, selectedDays]
+    [getWeekendDays, getHolidays, getBalanceAsOf, selectedDays]
   );
+
+  useEffect(() => {
+    generateSuggestions({ silent: true });
+  }, [
+    selectedDays,
+    plannerData?.holidays,
+    localHolidays,
+    plannerData?.weekendConfig,
+    localWeekendVersion,
+    generateSuggestions,
+  ]);
 
   // Context value
   const value: PlannerContextType = {
     plannerData,
     selectedDays,
     suggestedDays,
-    currentStrategy,
+    suggestionPreferences,
     lastOptimizationResult,
     isAuthenticated,
     countryCode,
     isLoadingHolidays,
+    isGeneratingSuggestions,
     setPlannerData,
     setSelectedDays,
     setSuggestedDays,
-    setCurrentStrategy,
     setCountryCode,
+    updateSuggestionPreferences,
     isDateSelected,
     isDateSuggested,
     isDateHoliday,
@@ -1337,7 +1480,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     toggleDaySelection,
     clearSuggestions,
     applySuggestions,
-    runOptimization,
+    generateSuggestions,
     saveLocalSettings,
     saveLocalWeekendConfig,
     saveLocalHolidays,

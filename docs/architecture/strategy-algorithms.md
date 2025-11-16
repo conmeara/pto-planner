@@ -1,490 +1,154 @@
-# PTO Planner Strategy Algorithms - Comprehensive Analysis
+# Gap-Filling PTO Suggestions
 
-## Overview
-The PTO planner features a sophisticated optimization system with 5 different strategies that intelligently suggest PTO days to maximize time off. The system automatically calculates the most efficient combinations of PTO days around weekends and holidays.
+The PTO planner now generates recommendations through a single gap-filling engine whose goal is simple: maximize consecutive days off by bridging the working-day gaps between weekends, public holidays, and (optionally) your existing PTO selections.
 
-## 1. STRATEGY ALGORITHMS
-
-### 1.1 Strategy Types (5 Total)
-Located in: `src/components/tabs/SuggestedPTOTab.tsx` (lines 10-16)
-
-```typescript
-enum StrategyType {
-  BALANCED_MIX = 'balanced',        // Mix of short breaks and longer vacations
-  LONG_WEEKENDS = 'long-weekends',  // 3-4 day breaks extending weekends
-  MINI_BREAKS = 'mini-breaks',      // 5-6 day breaks spread across year
-  WEEK_LONG = 'week-long',          // 7-9 day getaways
-  EXTENDED = 'extended'              // 10-15 day breaks for deep relaxation
-}
-```
-
-### 1.2 Strategy Details and Descriptions
-
-| Strategy | Min Break | Max Break | Use Case | File Location |
-|----------|-----------|-----------|----------|---------------|
-| **Balanced Mix** | Mixed | Mixed | Combination of short breaks and longer vacations | `pto-optimizer.ts` lines 273-314 |
-| **Long Weekends** | 3 days | 4 days | Multiple breaks extending regular weekends | `pto-optimizer.ts` lines 320-339 |
-| **Mini Breaks** | 5 days | 6 days | Several breaks spread throughout year | `pto-optimizer.ts` lines 345-373 |
-| **Week-Long** | 7 days | 9 days | Proper vacations for restoration | `pto-optimizer.ts` lines 379-407 |
-| **Extended** | 10 days | 15 days | Deeper relaxation fewer times per year | `pto-optimizer.ts` lines 413-441 |
+This document explains the moving pieces so future contributors can reason about the behaviour, adjust scoring, or extend the available tuning controls.
 
 ---
 
-## 2. FILE STRUCTURE & LOCATIONS
+## 1. High-Level Flow
 
-### Core Strategy Files
+1. **PlannerContext** gathers the current configuration: weekend rules, active holidays, already-selected PTO, remaining balance, plus the persisted `SuggestionPreferences`.
+2. The context calls `optimizePTO(config, preferences)` inside `src/lib/pto-optimizer.ts`.
+3. The optimizer scans every day in the requested timeframe, marks non-working “anchor” windows, finds the working gaps between them, scores each gap, then greedily selects the best non-overlapping breaks within the remaining PTO budget.
+4. The resulting `OptimizationResult` feeds back into context state (`suggestedDays`, `lastOptimizationResult`) and is rendered inside the new `SuggestedPTOTab`.
+5. When the user tweaks preferences or regenerates manually, the same pipeline repeats and calendar highlights update immediately.
 
-#### A. Strategy UI Component
-**File:** `src/components/tabs/SuggestedPTOTab.tsx`
-- **Lines:** 1-244
-- **Purpose:** User interface for strategy selection and application
-- **Key Components:**
-  - Strategy list rendering (lines 132-167)
-  - Strategy selection handler (lines 73-92)
-  - Apply button (lines 207-223)
-  - Clear button (lines 225-232)
-  - Optimization result display (lines 178-203)
-
-#### B. Optimization Engine
-**File:** `src/lib/pto-optimizer.ts`
-- **Lines:** 1-529 (529 total lines)
-- **Purpose:** Core algorithm implementations
-- **Key Functions:**
-  - `optimizePTO()` - Main entry point (lines 511-529)
-  - `optimizeBalancedMix()` - Balanced strategy (lines 273-314)
-  - `optimizeLongWeekends()` - Long weekends strategy (lines 320-339)
-  - `optimizeMiniBreaks()` - Mini breaks strategy (lines 345-373)
-  - `optimizeWeekLong()` - Week-long strategy (lines 379-407)
-  - `optimizeExtended()` - Extended strategy (lines 413-441)
-  - Helper functions for analysis (lines 42-263)
-
-#### C. State Management
-**File:** `src/contexts/PlannerContext.tsx`
-- **Lines:** 1-1030 (1030 total lines)
-- **Purpose:** Central state management for all planning data
-- **Key State Variables:**
-  - `suggestedDays` - Current suggestion array (line 306)
-  - `currentStrategy` - Selected strategy (line 307)
-  - `lastOptimizationResult` - Result object (line 308)
-- **Key Methods:**
-  - `runOptimization()` - Executes strategy (lines 907-968)
-  - `applySuggestions()` - Merges suggestions into selections (lines 889-904)
-  - `clearSuggestions()` - Clears all suggestions (lines 882-886)
-
-#### D. UI Container
-**File:** `src/components/IslandBar.tsx`
-- **Lines:** 1-202
-- **Purpose:** Tab navigation and panel management
-- **Key Content:**
-  - Tab configuration (lines 39-75)
-  - "Suggested" tab config (lines 47-53)
-  - Tab content rendering (lines 99-114)
-
-#### E. Calendar Display
-**Files:**
-- `src/components/calendar/MonthCard.tsx` (lines 1-312)
-  - Day type determination (lines 218-228)
-  - Suggested day styling (lines 79-80, 222-223)
-- `src/components/calendar/VirtualizedCalendar.tsx`
-  - Virtualized rendering for performance
-
-#### F. Type Definitions
-**File:** `src/types/index.ts`
-- **Lines:** 190-220
-- **Key Types:**
-  - `StrategyType` (line 194)
-  - `OptimizationResult` (lines 212-219)
+Auto-regeneration still fires when weekends, holidays, or PTO selections change, so the calendar never drifts away from the current data set.
 
 ---
 
-## 3. ALGORITHM HELPER FUNCTIONS
+## 2. Core Types
 
-Located in `pto-optimizer.ts` (lines 40-263):
+Defined in `src/types/index.ts`:
 
-### Core Helper Functions
+| Type | Purpose |
+|------|---------|
+| `SuggestionPreferences` | All user-tunable knobs (timeframe, PTO limits, ranking mode, spacing rules, anchor toggle). Persisted to `localStorage`. |
+| `SuggestedBreak` | A single candidate break including the PTO days to request, total consecutive days off, efficiency ratio, and before/after anchor metadata. |
+| `OptimizationResult` | The aggregate result returned by the optimizer. Includes the sorted break list, all suggested PTO days, total PTO consumed, total days off, average efficiency, and leftover PTO. |
+| `RankingMode` | Ordering options exposed in the UI (`efficiency`, `longest`, `least-pto`, `earliest`). |
 
-| Function | Lines | Purpose |
-|----------|-------|---------|
-| `isWeekend()` | 45-47 | Checks if date falls on weekend |
-| `isHoliday()` | 52-59 | Checks if date is marked as holiday |
-| `isNonWorkingDay()` | 64-66 | Checks if date is weekend or holiday |
-| `isPastDate()` | 71-77 | Prevents suggesting past dates |
-| `isAlreadySelected()` | 82-89 | Prevents duplicate suggestions |
-| `addDays()` | 94-98 | Date arithmetic utility |
-| `getDateRange()` | 103-113 | Gets all dates in range |
-| `countTotalDaysOff()` | 118-149 | Calculates total consecutive days off including weekends/holidays |
-| `findBridgeDays()` | 155-198 | Identifies "bridge days" - single workdays between weekends/holidays (most efficient) |
-| `findWorkdaySequences()` | 203-263 | Finds consecutive workday sequences for longer breaks |
-
-### Algorithm Configuration
-**Location:** `pto-optimizer.ts` line 14-36
-```typescript
-interface PTOOptimizerConfig {
-  year: number;                    // Target year
-  availableDays: number;           // Remaining PTO days
-  weekendDays: number[];           // [0,6] = Sun,Sat
-  holidays: Date[];                // Holiday dates
-  existingPTODays?: Date[];        // Already selected days
-}
-```
+These types are shared between the optimizer, context, and UI so the data remains serialisable and easy to inspect during debugging.
 
 ---
 
-## 4. INTEGRATION WITH CALENDAR
+## 3. Gap-Filling Algorithm (`src/lib/pto-optimizer.ts`)
 
-### A. Visual Representation
-**In MonthCard.tsx (lines 74-82):**
-```typescript
-getDayClasses: {
-  SUGGESTED_PTO: 'bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200'
-}
+The new optimizer has one entry point:
+
+```ts
+export function optimizePTO(
+  config: PTOOptimizerConfig,
+  preferences: SuggestionPreferences
+): OptimizationResult
 ```
 
-**Day Type Enum (lines 24-31):**
-- `SUGGESTED_PTO` displayed in yellow
-- Rendered when `isDateSuggested()` returns true
+### 3.1 Timeline Preparation
+1. Clamp the timeframe to [`earliestStart`, `latestEnd`] and drop past days.
+2. Build a `DayInfo` record for every date in range marking weekends, holidays, and selected PTO.
+3. Collapse consecutive non-working days into anchor segments. Each segment records its source (weekend, holiday, existing PTO, timeframe boundary) and whether it counts toward the eventual streak length (existing PTO only counts when `extendExistingPTO` is enabled).
 
-### B. State Connection
-**Flow:**
-1. User selects strategy in `SuggestedPTOTab`
-2. Calls `usePlanner().runOptimization(strategyType)`
-3. `PlannerContext.runOptimization()` executes
-4. Results stored in `suggestedDays` and `currentStrategy` state
-5. `MonthCard.isDateSuggested()` checks if date is in `suggestedDays`
-6. Matching dates displayed in yellow on calendar
+### 3.2 Gap Detection
+Every working-day segment that sits between two anchors becomes a candidate gap. For each gap:
 
-**Implementation in MonthCard.tsx (lines 218-228):**
-```typescript
-const dayType = isToday(date)
-  ? DayType.TODAY
-  : isDateSelected(date)
-  ? DayType.SELECTED_PTO
-  : isDateSuggested(date)          // ← Checks suggested days
-  ? DayType.SUGGESTED_PTO
-  : isDateHoliday(date)
-  ? DayType.PUBLIC_HOLIDAY
-  : isDateWeekend(date)
-  ? DayType.WEEKEND
-  : DayType.NORMAL;
-```
+* PTO required = number of workdays inside the gap.
+* Total days off = PTO required + leading anchor length (if counted) + trailing anchor length (if counted).
+* Efficiency = `totalDaysOff / ptoRequired`.
+
+Candidates are discarded if they exceed `maxPTOPerBreak`, fail the `minConsecutiveDaysOff` filter, or exceed the global PTO budget from preferences/remaining balance.
+
+### 3.3 Ranking & Greedy Selection
+* Candidates are sorted according to the chosen `RankingMode`.
+* The optimizer iterates through the sorted list, picking breaks while:
+  * They do not overlap previously selected breaks.
+  * They obey `minSpacingBetweenBreaks`.
+  * There is still PTO and `maxSuggestions` capacity left.
+* Once a break is accepted, its PTO days are added to the final suggestion set and the remaining PTO budget is reduced.
+
+The output contains the original break ordering (already ranked), flattened PTO dates for the calendar, and derived metrics (total PTO used, total days off, average efficiency, remaining PTO).
+
+### 3.4 Anchor Metadata
+Each `SuggestedBreak` carries two `AnchorInfo` objects describing the before/after anchors. The UI uses these labels to show whether a streak starts from “Weekend”, “Holiday”, “Existing PTO”, or a timeframe boundary, and it visually mutes anchors that do not add extra days.
 
 ---
 
-## 5. "APPLY PLAN" AND "CLEAR" BUTTONS
+## 4. Planner Context Integration (`src/contexts/PlannerContext.tsx`)
 
-### Location
-**File:** `src/components/tabs/SuggestedPTOTab.tsx`
-**Lines:** 205-239
+Key responsibilities:
 
-### Button Implementation
+* Store `suggestionPreferences` in state, persist them via `localStorage`, and expose `updateSuggestionPreferences`.
+* Maintain `suggestionPreferencesRef` so manual regeneration always reads the latest settings.
+* Provide `generateSuggestions(options?: { silent?: boolean })` which prepares `PTOOptimizerConfig` (weekends, expanded holiday dates, selected PTO days, remaining balance) and calls `optimizePTO`.
+* Auto-run `generateSuggestions({ silent: true })` whenever selected PTO, holiday data, or weekend rules change. Local weekend updates flip a simple `localWeekendVersion` counter so the effect re-fires.
+* Keep the old actions (`applySuggestions`, `clearSuggestions`) so calendar interactions remain the same.
 
-#### Apply Button (Lines 207-223)
-```typescript
-<Button
-  onClick={handleApply}
-  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-  disabled={isApplying}
->
-  {isApplying ? (
-    <>
-      <BrainCircuit className="mr-2 h-4 w-4 animate-spin" />
-      Applying strategy...
-    </>
-  ) : (
-    <>
-      <Check className="mr-2 h-4 w-4" />
-      Apply {suggestedDays.length} suggested days
-    </>
-  )}
-</Button>
+State exposed through `usePlanner()` now includes:
+
+```
+suggestionPreferences,
+updateSuggestionPreferences,
+generateSuggestions,
+isGeneratingSuggestions,
+lastOptimizationResult,
+suggestedDays,
+...
 ```
 
-- **Function:** Merges suggested days into selected days
-- **Handler:** `handleApply()` at lines 95-105
-- **State Update:** Calls `applySuggestions()` from context
-- **Visual:** Shows count of days being applied, displays spinner during application
-
-#### Clear Button (Lines 225-232)
-```typescript
-<Button
-  onClick={handleClear}
-  variant="outline"
-  className="w-full border-gray-300 dark:border-gray-600"
-  disabled={isApplying}
->
-  Clear suggestions
-</Button>
-```
-
-- **Function:** Removes all current suggestions
-- **Handler:** `handleClear()` at lines 108-111
-- **State Update:** Calls `clearSuggestions()` from context
-- **Effect:** Clears `suggestedDays`, `currentStrategy`, and `lastOptimizationResult`
-
-### Visibility Logic (Lines 205-206)
-```typescript
-{currentStrategy && suggestedDays.length > 0 && (
-  // Show Apply/Clear buttons
-)}
-```
-- Buttons only display when:
-  - A strategy has been selected (`currentStrategy` is not null)
-  - Suggestions have been generated (`suggestedDays` is not empty)
+`clearSuggestions()` only resets the highlighted days/result. Because auto-generation ignores preference changes, users can clear the view and keep it blank until they explicitly regenerate.
 
 ---
 
-## 6. CURRENT FLOW FOR APPLYING STRATEGIES
+## 5. Suggested PTO Tab UI (`src/components/tabs/SuggestedPTOTab.tsx`)
 
-### Flow Diagram
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. USER SELECTS STRATEGY                                   │
-│    (SuggestedPTOTab: handleSelectStrategy)                 │
-└──────────────────────┬──────────────────────────────────────┘
-                       ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 2. OPTIMIZATION RUNS                                        │
-│    (PlannerContext: runOptimization)                       │
-│    - Builds config from settings                           │
-│    - Calls optimizePTO() from pto-optimizer.ts            │
-│    - Stores result in lastOptimizationResult              │
-└──────────────────────┬──────────────────────────────────────┘
-                       ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 3. RESULTS DISPLAYED                                        │
-│    - Yellow days shown on calendar                         │
-│    - Optimization stats displayed                          │
-│    - Apply/Clear buttons become visible                    │
-└──────────────────────┬──────────────────────────────────────┘
-                       ↓
-         ┌─────────────┴──────────────┐
-         ↓                            ↓
-    USER CLICKS              USER CLICKS
-    "APPLY"                 "CLEAR"
-         ↓                            ↓
-    applySuggestions()       clearSuggestions()
-    (merges into selected)   (removes all suggestions)
-         ↓                            ↓
-    Green days appear       Yellow days disappear
-    on calendar              on calendar
-```
+The tab has four main sections:
 
-### Step-by-Step Implementation
+1. **Timeframe & Ranking Card** – date range pickers plus a ranking mode select. The helper text updates to match the chosen mode.
+2. **Usage Constraints Card** – numeric inputs for `maxPTOToUse`, `maxPTOPerBreak`, `minConsecutiveDaysOff`, and `maxSuggestions`.
+3. **Spacing & Anchors** – input for `minSpacingBetweenBreaks` and a switch that toggles “extend existing PTO as anchors” (with live feedback on how many PTO days are already selected).
+4. **Metrics + Action Bar** – shows break count, total days off, PTO used (against the configured max), average efficiency, and remaining PTO. Buttons:
+   * `Regenerate` (calls `generateSuggestions()`)
+   * `Apply` (merges `suggestedDays` into the user’s selection)
+   * `Clear`
 
-**Step 1: Strategy Selection** (SuggestedPTOTab.tsx, lines 73-92)
-```typescript
-const handleSelectStrategy = async (strategyType: StrategyType) => {
-  setIsOptimizing(true);
-  try {
-    const result = runOptimization(strategyType);  // Context call
-    if (result) {
-      setOptimizationResult({...});
-    }
-  } finally {
-    setIsOptimizing(false);
-  }
-};
-```
+Below the controls, the **Break list** renders the ranked recommendations. Each card surfaces:
 
-**Step 2: Optimization** (PlannerContext.tsx, lines 907-968)
-```typescript
-const runOptimization = useCallback(
-  (strategy: StrategyType, year?: number): OptimizationResult | null => {
-    // Build config with current settings
-    const config: PTOOptimizerConfig = {
-      year: targetYear,
-      availableDays,      // Current balance - used days
-      weekendDays,        // Weekend configuration
-      holidays: holidayDates,
-      existingPTODays: selectedDays,
-    };
+* Break window (`start → end`) and total streak length.
+* PTO days required and efficiency.
+* Anchor labels (muted when they do not extend the streak).
+* The PTO dates to request (first few dates shown as badges, followed by a “+N” badge when long).
 
-    // Execute strategy
-    const result = optimizePTO(strategy, config);
-
-    // Update state
-    setSuggestedDays(result.suggestedDays);
-    setCurrentStrategy(strategy);
-    setLastOptimizationResult(result);
-
-    return result;
-  },
-  [...]
-);
-```
-
-**Step 3: Apply Suggestions** (PlannerContext.tsx, lines 889-904)
-```typescript
-const applySuggestions = useCallback(() => {
-  // Merge suggestions into selected days (avoiding duplicates)
-  setSelectedDays((prev) => {
-    const combined = [...prev];
-    suggestedDays.forEach((suggestedDate) => {
-      const alreadyExists = combined.some((d) => isSameDay(d, suggestedDate));
-      if (!alreadyExists) {
-        combined.push(suggestedDate);
-      }
-    });
-    return combined;
-  });
-
-  // Clear suggestions after applying
-  clearSuggestions();
-}, [suggestedDays, clearSuggestions]);
-```
-
-**Step 4: Clear Suggestions** (PlannerContext.tsx, lines 882-886)
-```typescript
-const clearSuggestions = useCallback(() => {
-  setSuggestedDays([]);
-  setCurrentStrategy(null);
-  setLastOptimizationResult(null);
-}, []);
-```
+An empty state nudges users to adjust filters and hit regenerate if no candidates survive the constraints.
 
 ---
 
-## 7. SETTINGS INTEGRATIONS
+## 6. Preference Reference
 
-### Configuration Sources (PlannerContext.tsx, lines 907-950)
+| Preference | Description | UI Location |
+|------------|-------------|-------------|
+| `earliestStart`, `latestEnd` | Bounds the scanning window. Past days are automatically skipped. | Timeframe card |
+| `maxPTOToUse` | Hard cap on PTO the engine may allocate. | Usage constraints |
+| `maxPTOPerBreak` | Limits how costly any single streak can be. | Usage constraints |
+| `minConsecutiveDaysOff` | Filters out short streaks even if they are efficient. | Usage constraints |
+| `maxSuggestions` | Truncates the ranked list to keep the UI manageable. | Usage constraints |
+| `rankingMode` | Sorting strategy (efficiency, longest stretch, least PTO, earliest). | Timeframe card |
+| `minSpacingBetweenBreaks` | Enforces a cooldown between streaks once they are selected. | Spacing section |
+| `extendExistingPTO` | Treats already-planned PTO days as anchors to stretch. When disabled, they simply block suggestions. | Spacing section |
 
-#### A. PTO Settings
-- **Source:** Database (authenticated) or localStorage (unauthenticated)
-- **Data:**
-  - `initial_balance` - Starting PTO days
-  - `pto_display_unit` - Days or hours
-  - `hours_per_day` - For hour conversions
-  - `pto_start_date` - Year start reference
-  - `carry_over_limit` - Cap on carryover
-  - `max_balance` - Maximum balance cap
-
-#### B. Weekend Configuration
-- **Source:** Database (authenticated) or localStorage (unauthenticated)
-- **Data:** `weekendDays` array (e.g., [0, 6] for Sun/Sat)
-- **Method:** `getWeekendDays()` from context
-
-#### C. Holiday Data
-- **Source:** Database (authenticated) or localStorage (unauthenticated)
-- **Data:** Array of `CustomHoliday` objects
-- **Properties:**
-  - `date` - ISO format date
-  - `repeats_yearly` - For recurring holidays
-  - `is_paid_holiday` - Whether it counts as day off
-- **Method:** `getHolidays()` from context
-
-#### D. Existing PTO Days
-- **Source:** Database `ptoDays` table or localStorage
-- **Status Filter:** Only "planned" status days included
-- **Purpose:** Prevents double-suggesting already selected days
-
-### Configuration Building (PlannerContext.tsx, lines 943-949)
-```typescript
-const config: PTOOptimizerConfig = {
-  year: targetYear,
-  availableDays,              // getCurrentBalance() - usedDays
-  weekendDays,                // getWeekendDays()
-  holidays: holidayDates,     // getHolidays() converted to Date objects
-  existingPTODays: selectedDays,  // Current selections
-};
-```
-
-### Storage Persistence
-
-**LocalStorage Keys** (PlannerContext.tsx, lines 13-19):
-```typescript
-const STORAGE_KEYS = {
-  SELECTED_DAYS: 'pto_planner_selected_days',
-  SETTINGS: 'pto_planner_settings',
-  WEEKEND_CONFIG: 'pto_planner_weekend',
-  HOLIDAYS: 'pto_planner_holidays',
-  COUNTRY: 'pto_planner_country',
-};
-```
+All preferences persist locally so the planner mirrors the same behaviour on refresh.
 
 ---
 
-## 8. OPTIMIZATION RESULT METRICS
+## 7. Calendar Integration
 
-### OptimizationResult Interface (pto-optimizer.ts, lines 30-36)
-```typescript
-interface OptimizationResult {
-  suggestedDays: Date[];           // Array of suggested PTO dates
-  periods: SuggestedPeriod[];      // Grouped periods
-  totalPTOUsed: number;            // PTO days required
-  totalDaysOff: number;            // Total consecutive days off
-  averageEfficiency: number;       // totalDaysOff / totalPTOUsed
-}
-```
-
-### Displayed Metrics (SuggestedPTOTab.tsx, lines 186-201)
-- **PTO Days Used:** Actual vacation days needed
-- **Total Days Off:** Including weekends & holidays
-- **Efficiency Ratio:** How many days off per 1 PTO day
-  - Example: 2.5x means 2.5 days off per 1 PTO day used
+`suggestedDays` still flows into the calendar via `isDateSuggested(date)` and is highlighted with the existing “suggested PTO” styling. Because `applySuggestions()` copies those days into the selected set, users retain the same calendar interaction model even though the strategy picker went away.
 
 ---
 
-## 9. KEY ALGORITHM CONCEPTS
+## 8. Next Steps & Extension Points
 
-### Bridge Days (Most Efficient)
-- Definition: Single workdays surrounded by weekends/holidays on both sides
-- Example: Monday between Friday (holiday) and weekend
-- Implementation: `findBridgeDays()` (lines 155-198)
-- Efficiency: Can give 3+ days off for 1 PTO day
+* **Scoring tweaks** – adjust `sortCandidates` or add additional tie-breakers (e.g., favouring breaks that touch specific holidays).
+* **Additional controls** – new filters only require updating `SuggestionPreferences`, persisting them in context, and wiring a new UI field to the same update helper.
+* **Analytics** – every `SuggestedBreak` carries anchor metadata, so later we could show “anchored by Labor Day” badges or aggregate stats per holiday cluster.
 
-### Workday Sequences
-- Definition: Consecutive workday periods
-- Implementation: `findWorkdaySequences()` (lines 203-263)
-- Used by: Mini-breaks, week-long, and extended strategies
-
-### Efficiency Calculation
-```
-Efficiency = Total Days Off / PTO Days Required
-
-Example:
-- Take Monday (PTO day)
-- Weekend comes Friday-Saturday
-- Holiday on Friday
-- Total: Friday (holiday) + Saturday (weekend) + Sunday (weekend) + Monday (PTO)
-         = 4 days off from 1 PTO day = 4.0x efficiency
-```
-
-### Overlap Prevention
-- Strategies track `suggestedDays` to avoid duplicates
-- Database `existingPTODays` prevents re-suggesting already selected days
-- Past dates filtered out with `isPastDate()` check
-
----
-
-## 10. AUTO-REOPTIMIZATION
-
-**Feature:** When selected days change, suggestions automatically update (PlannerContext.tsx, lines 970-976)
-
-```typescript
-useEffect(() => {
-  if (!currentStrategy) {
-    return;
-  }
-
-  runOptimization(currentStrategy);  // Re-run when selections change
-}, [selectedDays, currentStrategy, runOptimization]);
-```
-
-This ensures suggestions always account for previously selected days.
-
----
-
-## SUMMARY TABLE
-
-| Component | Location | Lines | Purpose |
-|-----------|----------|-------|---------|
-| **Strategy Enum** | SuggestedPTOTab | 10-16 | Define 5 strategy types |
-| **UI Tab** | SuggestedPTOTab | 1-244 | User interface & buttons |
-| **Algorithms** | pto-optimizer | 273-441 | Strategy implementations |
-| **Helpers** | pto-optimizer | 40-263 | Analysis functions |
-| **State** | PlannerContext | 304-308 | Redux-like state holder |
-| **Hooks** | PlannerContext | 1023-1029 | usePlanner() export |
-| **Calendar Display** | MonthCard | 218-228 | Yellow day rendering |
-| **Container** | IslandBar | 1-202 | Tab navigation |
-| **Types** | types/index | 190-244 | TypeScript definitions |
-
+The important takeaway: the system is now single-minded (maximize consecutive days off) and explainable. Preferences translate directly into optimizer constraints and the UI keeps those relationships visible.
