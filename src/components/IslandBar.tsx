@@ -50,7 +50,7 @@ const TABS: TabConfig[] = [
     legendDotClass: 'bg-suggested',
     label: 'Suggested',
     panelTitle: 'Suggested PTO Plans',
-    panelDescription: 'Pick a strategy and see it reflected on the calendar immediately.',
+    panelDescription: 'Tune the gap-filling engine and regenerate high-leverage streaks.',
   },
   {
     type: TabType.PUBLIC_HOLIDAYS,

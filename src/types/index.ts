@@ -190,34 +190,61 @@ export interface PlannerData {
 }
 
 // ============================================================================
-// Algorithm Types
+// PTO Suggestion Types
 // ============================================================================
 
-export type StrategyType = 'balanced' | 'long-weekends' | 'mini-breaks' | 'week-long' | 'extended';
+export type RankingMode = 'efficiency' | 'longest' | 'least-pto' | 'earliest';
 
-export interface OptimizationInput {
-  year: number;
-  availablePTO: number;
-  weekendDays: number[]; // [0, 6] for Sun/Sat
-  publicHolidays: Date[];
-  existingPTO: Date[];
-  startDate?: Date; // Allow optimization from specific date
+export interface SuggestionPreferences {
+  earliestStart: Date;
+  latestEnd: Date;
+  maxPTOToUse: number;
+  maxPTOPerBreak: number;
+  minConsecutiveDaysOff: number;
+  maxSuggestions: number;
+  rankingMode: RankingMode;
+  minSpacingBetweenBreaks: number;
+  extendExistingPTO: boolean;
 }
 
-export interface Break {
+export type AnchorType =
+  | 'weekend'
+  | 'holiday'
+  | 'mixed'
+  | 'existing'
+  | 'boundary-start'
+  | 'boundary-end';
+
+export interface AnchorInfo {
   start: Date;
   end: Date;
-  duration: number; // total consecutive days off
-  ptoRequired: number; // number of PTO days needed
+  dayCount: number;
+  type: AnchorType;
+  label: string;
+  countsTowardRun: boolean;
+}
+
+export interface SuggestedBreak {
+  id: string;
+  start: Date;
+  end: Date;
+  ptoDays: Date[];
+  ptoRequired: number;
+  totalDaysOff: number;
+  efficiency: number;
+  anchors: {
+    before: AnchorInfo | null;
+    after: AnchorInfo | null;
+  };
 }
 
 export interface OptimizationResult {
-  strategy: StrategyType;
   suggestedDays: Date[];
-  ptoUsed: number;
+  breaks: SuggestedBreak[];
+  totalPTOUsed: number;
   totalDaysOff: number;
-  breaks: Break[];
-  efficiency: number; // total days off / PTO used
+  averageEfficiency: number;
+  remainingPTO: number;
 }
 
 // ============================================================================

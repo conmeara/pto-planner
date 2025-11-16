@@ -1,11 +1,11 @@
 # PTO Planner v3
 
-Modern, open-source PTO planning for people who want to see the entire year at a glance. PTO Planner combines a virtualized calendar, flexible accrual tracking, and Supabase-powered sync so you can explore strategies, share plans, and deploy your own instance.
+Modern, open-source PTO planning for people who want to see the entire year at a glance. PTO Planner combines a virtualized calendar, flexible accrual tracking, and Supabase-powered sync so you can dial in consecutive-day preferences, share plans, and deploy your own instance.
 
 ## Highlights
 
 - Plan every day of the year with a highly performant, virtualized calendar (`src/components/calendar/VirtualizedCalendar.tsx`) and a floating “Island” legend for quick filters.
-- Five optimization strategies powered by `src/lib/pto-optimizer.ts` help you find balanced breaks, long weekends, or extended getaways based on your real PTO balance.
+- A gap-filling PTO engine (`src/lib/pto-optimizer.ts`) ranks working-day bridges between weekends/holidays so you can maximize consecutive time off with real balance awareness.
 - Local-first experience driven by `src/contexts/PlannerContext.tsx`; works anonymously with localStorage or authenticated with Supabase Auth + magic links.
 - Built-in holiday importer and customizable weekend configuration make the planner globally useful.
 - Studio Ghibli-inspired UI built with shadcn/ui, Radix primitives, Tailwind CSS, and Framer Motion.
@@ -21,8 +21,8 @@ Modern, open-source PTO planning for people who want to see the entire year at a
 ## Architecture at a Glance
 
 - `src/app` – App Router routes, public/auth flows, server actions, and middleware entry points.
-- `src/contexts/PlannerContext.tsx` – Source of truth for PTO balances, selected days, suggested strategies, weekend config, and Supabase/local persistence.
-- `src/lib/pto-optimizer.ts` – Deterministic suggestion engine that evaluates workday sequences, bridge days, and efficiency metrics per strategy.
+- `src/contexts/PlannerContext.tsx` – Source of truth for PTO balances, selected days, suggestion preferences, weekend config, and Supabase/local persistence.
+- `src/lib/pto-optimizer.ts` – Deterministic gap-filling engine that evaluates anchors, working gaps, and efficiency metrics before ranking the best streaks.
 - `src/components/IslandBar.tsx` and `src/components/tabs/*` – UX for the floating legend + settings drawer that orchestrates planner state.
 - `src/utils/supabase/*` – Shared helpers for SSR-safe Supabase clients, middleware session updates, and action utilities.
 - `supabase/migrations` – Database schema, RLS policies, triggers, and optional `seed.sql`.
