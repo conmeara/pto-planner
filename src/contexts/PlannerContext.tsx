@@ -133,9 +133,19 @@ const alignToDayOfWeek = (date: Date, targetDayOfWeek: number): Date => {
   return addDays(current, diff);
 };
 
-type StoredSuggestionPreferences = Omit<SuggestionPreferences, 'earliestStart' | 'latestEnd'> & {
+type StoredSuggestionPreferences = {
   earliestStart: string;
   latestEnd: string;
+  minPTOToKeep?: number;
+  maxConsecutiveDaysOff?: number;
+  minConsecutiveDaysOff?: number;
+  rankingMode?: RankingMode;
+  minSpacingBetweenBreaks?: number;
+  extendExistingPTO?: boolean;
+  // legacy fields
+  maxPTOPerBreak?: number;
+  maxPTOToUse?: number;
+  maxSuggestions?: number;
 };
 
 const SUPPORTED_RANKING_MODES: RankingMode[] = ['efficiency', 'longest', 'least-pto', 'earliest'];
@@ -146,15 +156,16 @@ const isRankingMode = (value: unknown): value is RankingMode => {
 
 function getDefaultSuggestionPreferences(): SuggestionPreferences {
   const today = startOfDay(new Date());
-  const endOfYear = startOfDay(new Date(today.getFullYear(), 11, 31));
+  const currentYear = today.getFullYear();
+  const earliestStart = startOfDay(new Date(currentYear - 2, 0, 1));
+  const latestEnd = startOfDay(new Date(currentYear + 2, 11, 31));
 
   return {
-    earliestStart: today,
-    latestEnd: endOfYear,
-    maxPTOToUse: 10,
-    maxPTOPerBreak: 5,
+    earliestStart,
+    latestEnd,
+    minPTOToKeep: 2,
+    maxConsecutiveDaysOff: 14,
     minConsecutiveDaysOff: 4,
-    maxSuggestions: 5,
     rankingMode: 'efficiency',
     minSpacingBetweenBreaks: 14,
     extendExistingPTO: true,
@@ -185,17 +196,29 @@ function loadInitialSuggestionPreferences(): SuggestionPreferences {
       return typeof value === 'number' && Number.isFinite(value) ? value : defaultValue;
     };
 
+    const storedAny = stored as StoredSuggestionPreferences;
+
     return {
       earliestStart: earliest,
       latestEnd: latest,
-      maxPTOToUse: coerceNumber(stored.maxPTOToUse, fallback.maxPTOToUse),
-      maxPTOPerBreak: coerceNumber(stored.maxPTOPerBreak, fallback.maxPTOPerBreak),
-      minConsecutiveDaysOff: coerceNumber(stored.minConsecutiveDaysOff, fallback.minConsecutiveDaysOff),
-      maxSuggestions: coerceNumber(stored.maxSuggestions, fallback.maxSuggestions),
-      rankingMode: isRankingMode(stored.rankingMode) ? stored.rankingMode : fallback.rankingMode,
-      minSpacingBetweenBreaks: coerceNumber(stored.minSpacingBetweenBreaks, fallback.minSpacingBetweenBreaks),
+      minPTOToKeep: coerceNumber(storedAny.minPTOToKeep, fallback.minPTOToKeep),
+      maxConsecutiveDaysOff: coerceNumber(
+        storedAny.maxConsecutiveDaysOff ?? storedAny.maxPTOPerBreak,
+        fallback.maxConsecutiveDaysOff
+      ),
+      minConsecutiveDaysOff: coerceNumber(
+        storedAny.minConsecutiveDaysOff,
+        fallback.minConsecutiveDaysOff
+      ),
+      rankingMode: isRankingMode(storedAny.rankingMode) ? storedAny.rankingMode : fallback.rankingMode,
+      minSpacingBetweenBreaks: coerceNumber(
+        storedAny.minSpacingBetweenBreaks,
+        fallback.minSpacingBetweenBreaks
+      ),
       extendExistingPTO:
-        typeof stored.extendExistingPTO === 'boolean' ? stored.extendExistingPTO : fallback.extendExistingPTO,
+        typeof storedAny.extendExistingPTO === 'boolean'
+          ? storedAny.extendExistingPTO
+          : fallback.extendExistingPTO,
     };
   } catch (error) {
     console.warn('Failed to load suggestion preferences, falling back to defaults', error);
@@ -205,9 +228,14 @@ function loadInitialSuggestionPreferences(): SuggestionPreferences {
 
 function persistSuggestionPreferences(preferences: SuggestionPreferences) {
   const payload: StoredSuggestionPreferences = {
-    ...preferences,
     earliestStart: preferences.earliestStart.toISOString(),
     latestEnd: preferences.latestEnd.toISOString(),
+    minPTOToKeep: preferences.minPTOToKeep,
+    maxConsecutiveDaysOff: preferences.maxConsecutiveDaysOff,
+    minConsecutiveDaysOff: preferences.minConsecutiveDaysOff,
+    rankingMode: preferences.rankingMode,
+    minSpacingBetweenBreaks: preferences.minSpacingBetweenBreaks,
+    extendExistingPTO: preferences.extendExistingPTO,
   };
   saveToLocalStorage(STORAGE_KEYS.SUGGESTION_PREFS, payload);
 }
@@ -1414,9 +1442,11 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         const timelineEnd = activePreferences.latestEnd;
         const totalBalance = getBalanceAsOf(timelineEnd);
         const remainingBalance = Math.max(totalBalance - selectedDays.length, 0);
+        const reserve = Math.max(0, Math.floor(activePreferences.minPTOToKeep));
+        const availableBudget = Math.max(remainingBalance - reserve, 0);
 
         const config: PTOOptimizerConfig = {
-          availablePTO: remainingBalance,
+          availablePTO: availableBudget,
           weekendDays,
           holidays,
           selectedPTODays: selectedDays,
@@ -1440,13 +1470,14 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   );
 
   useEffect(() => {
-    generateSuggestions({ silent: true });
+    generateSuggestions();
   }, [
     selectedDays,
     plannerData?.holidays,
     localHolidays,
     plannerData?.weekendConfig,
     localWeekendVersion,
+    suggestionPreferences,
     generateSuggestions,
   ]);
 

@@ -207,19 +207,16 @@ export function optimizePTO(
   config: PTOOptimizerConfig,
   preferences: SuggestionPreferences
 ): OptimizationResult {
-  const sanitized = sanitizePreferences(preferences, config.availablePTO);
+  const sanitized = sanitizePreferences(preferences);
   const { earliestStart, latestEnd } = sanitized;
 
   if (earliestStart > latestEnd) {
     return emptyResult();
   }
 
-  const availableBudget = Math.max(
-    0,
-    Math.min(Math.floor(config.availablePTO), sanitized.maxPTOToUse)
-  );
+  const availableBudget = Math.max(0, Math.floor(config.availablePTO));
 
-  if (availableBudget <= 0 || sanitized.maxPTOPerBreak <= 0 || sanitized.maxSuggestions <= 0) {
+  if (availableBudget <= 0 || sanitized.maxConsecutiveDaysOff <= 0) {
     return {
       ...emptyResult(),
       remainingPTO: Math.max(0, availableBudget),
@@ -264,9 +261,6 @@ export function optimizePTO(
   let remainingBudget = availableBudget;
 
   for (const candidate of sortedCandidates) {
-    if (selectedBreaks.length >= sanitized.maxSuggestions) {
-      break;
-    }
     if (candidate.ptoRequired > remainingBudget) {
       continue;
     }
@@ -309,10 +303,8 @@ const emptyResult = (): OptimizationResult => ({
 });
 
 const sanitizePreferences = (
-  preferences: SuggestionPreferences,
-  availablePTO: number
+  preferences: SuggestionPreferences
 ) => {
-  const today = startOfDay(new Date());
   let earliest = startOfDay(preferences.earliestStart);
   let latest = startOfDay(preferences.latestEnd);
 
@@ -320,23 +312,16 @@ const sanitizePreferences = (
     [earliest, latest] = [latest, earliest];
   }
 
-  earliest = compareAsc(earliest, today) < 0 ? today : earliest;
-
-  const maxPTOBudget = Math.max(0, Math.floor(preferences.maxPTOToUse));
-  const absoluteBudget = Math.max(0, Math.floor(availablePTO));
-  const maxPTOPerBreak = Math.max(1, Math.floor(preferences.maxPTOPerBreak));
   const minDaysOff = Math.max(1, Math.floor(preferences.minConsecutiveDaysOff));
-  const maxSuggestions = Math.max(0, Math.floor(preferences.maxSuggestions));
+  const maxDaysOff = Math.max(minDaysOff, Math.floor(preferences.maxConsecutiveDaysOff));
   const minSpacing = Math.max(0, Math.floor(preferences.minSpacingBetweenBreaks));
   const rankingMode: RankingMode = preferences.rankingMode ?? 'efficiency';
 
   return {
     earliestStart: earliest,
     latestEnd: latest,
-    maxPTOToUse: Math.min(maxPTOBudget, absoluteBudget),
-    maxPTOPerBreak,
     minConsecutiveDaysOff: minDaysOff,
-    maxSuggestions,
+    maxConsecutiveDaysOff: maxDaysOff,
     rankingMode,
     minSpacingBetweenBreaks: minSpacing,
     extendExistingPTO: preferences.extendExistingPTO,
@@ -432,7 +417,7 @@ const buildCandidateBreaks = (
     const workdays = segment.days;
     const ptoRequired = workdays.length;
 
-    if (ptoRequired === 0 || ptoRequired > preferences.maxPTOPerBreak) {
+    if (ptoRequired === 0) {
       continue;
     }
 
@@ -441,7 +426,10 @@ const buildCandidateBreaks = (
       (prevAnchorSegment.countsTowardRun ? prevAnchorSegment.days.length : 0) +
       (nextAnchorSegment.countsTowardRun ? nextAnchorSegment.days.length : 0);
 
-    if (totalDaysOff < preferences.minConsecutiveDaysOff) {
+    if (
+      totalDaysOff < preferences.minConsecutiveDaysOff ||
+      totalDaysOff > preferences.maxConsecutiveDaysOff
+    ) {
       continue;
     }
 

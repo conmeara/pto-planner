@@ -56,14 +56,14 @@ Every working-day segment that sits between two anchors becomes a candidate gap.
 * Total days off = PTO required + leading anchor length (if counted) + trailing anchor length (if counted).
 * Efficiency = `totalDaysOff / ptoRequired`.
 
-Candidates are discarded if they exceed `maxPTOPerBreak`, fail the `minConsecutiveDaysOff` filter, or exceed the global PTO budget from preferences/remaining balance.
+Candidates are discarded if they exceed `maxConsecutiveDaysOff`, fail the `minConsecutiveDaysOff` filter, or exceed the global PTO budget from preferences/remaining balance.
 
 ### 3.3 Ranking & Greedy Selection
 * Candidates are sorted according to the chosen `RankingMode`.
 * The optimizer iterates through the sorted list, picking breaks while:
   * They do not overlap previously selected breaks.
   * They obey `minSpacingBetweenBreaks`.
-  * There is still PTO and `maxSuggestions` capacity left.
+  * There is still PTO budget available.
 * Once a break is accepted, its PTO days are added to the final suggestion set and the remaining PTO budget is reduced.
 
 The output contains the original break ordering (already ranked), flattened PTO dates for the calendar, and derived metrics (total PTO used, total days off, average efficiency, remaining PTO).
@@ -79,8 +79,8 @@ Key responsibilities:
 
 * Store `suggestionPreferences` in state, persist them via `localStorage`, and expose `updateSuggestionPreferences`.
 * Maintain `suggestionPreferencesRef` so manual regeneration always reads the latest settings.
-* Provide `generateSuggestions(options?: { silent?: boolean })` which prepares `PTOOptimizerConfig` (weekends, expanded holiday dates, selected PTO days, remaining balance) and calls `optimizePTO`.
-* Auto-run `generateSuggestions({ silent: true })` whenever selected PTO, holiday data, or weekend rules change. Local weekend updates flip a simple `localWeekendVersion` counter so the effect re-fires.
+* Provide `generateSuggestions()` which prepares `PTOOptimizerConfig` (weekends, expanded holiday dates, selected PTO days, remaining balance) and calls `optimizePTO`.
+* Auto-run `generateSuggestions()` whenever suggestion preferences, selected PTO, holiday data, or weekend rules change. Local weekend updates flip a simple `localWeekendVersion` counter so the effect re-fires, and the UI shows a spinner while recalculating.
 * Keep the old actions (`applySuggestions`, `clearSuggestions`) so calendar interactions remain the same.
 
 State exposed through `usePlanner()` now includes:
@@ -101,13 +101,13 @@ suggestedDays,
 
 ## 5. Suggested PTO Tab UI (`src/components/tabs/SuggestedPTOTab.tsx`)
 
-The tab has four main sections:
+The tab has five main sections:
 
-1. **Timeframe & Ranking Card** – date range pickers plus a ranking mode select. The helper text updates to match the chosen mode.
-2. **Usage Constraints Card** – numeric inputs for `maxPTOToUse`, `maxPTOPerBreak`, `minConsecutiveDaysOff`, and `maxSuggestions`.
-3. **Spacing & Anchors** – input for `minSpacingBetweenBreaks` and a switch that toggles “extend existing PTO as anchors” (with live feedback on how many PTO days are already selected).
-4. **Metrics + Action Bar** – shows break count, total days off, PTO used (against the configured max), average efficiency, and remaining PTO. Buttons:
-   * `Regenerate` (calls `generateSuggestions()`)
+1. **Advanced Settings Toggle** – a lightweight switch that hides or reveals the configuration cards. It defaults to hidden so casual users only see results.
+2. **Timeframe & Ranking Card** – date range pickers plus a ranking mode select. The helper text updates to match the chosen mode (only visible when advanced settings are enabled).
+3. **Usage Constraints Card** – numeric inputs for the PTO safety reserve (`minPTOToKeep`), `maxConsecutiveDaysOff`, and `minConsecutiveDaysOff` (advanced only).
+4. **Spacing & Anchors** – input for `minSpacingBetweenBreaks` and a switch that toggles “extend existing PTO as anchors”, with live feedback on how many PTO days are already selected (advanced only).
+5. **Metrics + Action Bar** – shows break count, total days off, PTO used, average efficiency, remaining PTO, and the configured safety reserve. Because the optimizer re-runs automatically on every relevant change, the only buttons are:
    * `Apply` (merges `suggestedDays` into the user’s selection)
    * `Clear`
 
@@ -126,11 +126,10 @@ An empty state nudges users to adjust filters and hit regenerate if no candidate
 
 | Preference | Description | UI Location |
 |------------|-------------|-------------|
-| `earliestStart`, `latestEnd` | Bounds the scanning window. Past days are automatically skipped. | Timeframe card |
-| `maxPTOToUse` | Hard cap on PTO the engine may allocate. | Usage constraints |
-| `maxPTOPerBreak` | Limits how costly any single streak can be. | Usage constraints |
+| `earliestStart`, `latestEnd` | Bounds the scanning window (defaults to Jan 1 of current year − 2 through Dec 31 of current year + 2). | Timeframe card |
+| `minPTOToKeep` | Reserve that should remain unused. The engine only spends PTO above this cushion. | Usage constraints |
+| `maxConsecutiveDaysOff` | Upper bound on any single streak (weekends and holidays included). | Usage constraints |
 | `minConsecutiveDaysOff` | Filters out short streaks even if they are efficient. | Usage constraints |
-| `maxSuggestions` | Truncates the ranked list to keep the UI manageable. | Usage constraints |
 | `rankingMode` | Sorting strategy (efficiency, longest stretch, least PTO, earliest). | Timeframe card |
 | `minSpacingBetweenBreaks` | Enforces a cooldown between streaks once they are selected. | Spacing section |
 | `extendExistingPTO` | Treats already-planned PTO days as anchors to stretch. When disabled, they simply block suggestions. | Spacing section |

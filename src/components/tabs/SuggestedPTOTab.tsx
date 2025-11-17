@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Anchor as AnchorIcon,
   BrainCircuit,
   CalendarRange,
   Eraser,
-  RefreshCw,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
@@ -26,10 +25,9 @@ const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'nu
 const LONG_DATE = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
 type NumericPreferenceField =
-  | 'maxPTOToUse'
-  | 'maxPTOPerBreak'
+  | 'minPTOToKeep'
+  | 'maxConsecutiveDaysOff'
   | 'minConsecutiveDaysOff'
-  | 'maxSuggestions'
   | 'minSpacingBetweenBreaks';
 
 const RANKING_MODE_OPTIONS: Array<{ value: RankingMode; label: string; description: string }> = [
@@ -67,7 +65,6 @@ const SuggestedPTOTab: React.FC = () => {
   const {
     suggestionPreferences,
     updateSuggestionPreferences,
-    generateSuggestions,
     isGeneratingSuggestions,
     lastOptimizationResult,
     suggestedDays,
@@ -75,6 +72,8 @@ const SuggestedPTOTab: React.FC = () => {
     clearSuggestions,
     selectedDays,
   } = usePlanner();
+
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const breaks = lastOptimizationResult?.breaks ?? [];
 
@@ -126,10 +125,6 @@ const SuggestedPTOTab: React.FC = () => {
     updateSuggestionPreferences({ extendExistingPTO: checked });
   };
 
-  const handleRegenerate = () => {
-    generateSuggestions();
-  };
-
   const handleApply = () => {
     applySuggestions();
   };
@@ -143,162 +138,160 @@ const SuggestedPTOTab: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ConfigCard
-          icon={<CalendarRange className="h-4 w-4 text-primary" />}
-          title="Timeframe"
-          description="Tell the engine where to look for clever gaps."
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="earliestStart">Earliest start</Label>
-              <Input
-                id="earliestStart"
-                type="date"
-                value={formatDateLocal(suggestionPreferences.earliestStart)}
-                onChange={(event) => handleDateChange('earliestStart', event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="latestEnd">Latest end</Label>
-              <Input
-                id="latestEnd"
-                type="date"
-                value={formatDateLocal(suggestionPreferences.latestEnd)}
-                onChange={(event) => handleDateChange('latestEnd', event.target.value)}
-              />
-            </div>
-          </div>
-          <div className="mt-4 space-y-1.5">
-            <Label>Ranking mode</Label>
-            <Select
-              value={suggestionPreferences.rankingMode}
-              onValueChange={(value) => handleRankingModeChange(value as RankingMode)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Pick a ranking mode" />
-              </SelectTrigger>
-              <SelectContent>
-                {RANKING_MODE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {selectedRankingMode?.description ?? 'Pick how you want breaks to be sorted.'}
-            </p>
-          </div>
-        </ConfigCard>
-
-        <ConfigCard
-          icon={<SlidersHorizontal className="h-4 w-4 text-primary" />}
-          title="Usage constraints"
-          description="Fine-tune how aggressive the recommendations should be."
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <NumberField
-              id="maxPTOToUse"
-              label="Max PTO to use"
-              min={1}
-              value={suggestionPreferences.maxPTOToUse}
-              onChange={(value) => handleNumericChange('maxPTOToUse', value, 1)}
-              suffix="days"
-            />
-            <NumberField
-              id="maxPTOPerBreak"
-              label="Max PTO per break"
-              min={1}
-              value={suggestionPreferences.maxPTOPerBreak}
-              onChange={(value) => handleNumericChange('maxPTOPerBreak', value, 1)}
-              suffix="days"
-            />
-            <NumberField
-              id="minConsecutiveDaysOff"
-              label="Min consecutive days off"
-              min={1}
-              value={suggestionPreferences.minConsecutiveDaysOff}
-              onChange={(value) => handleNumericChange('minConsecutiveDaysOff', value, 1)}
-              suffix="days"
-            />
-            <NumberField
-              id="maxSuggestions"
-              label="Max suggestions"
-              min={1}
-              value={suggestionPreferences.maxSuggestions}
-              onChange={(value) => handleNumericChange('maxSuggestions', value, 1)}
-            />
-          </div>
-        </ConfigCard>
-      </div>
-
       <section className="rounded-3xl border border-border bg-card/40 p-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="minSpacingBetweenBreaks">Spacing between breaks (days)</Label>
-            <Input
-              id="minSpacingBetweenBreaks"
-              type="number"
-              min={0}
-              value={suggestionPreferences.minSpacingBetweenBreaks}
-              onChange={(event) =>
-                handleNumericChange('minSpacingBetweenBreaks', event.target.value, 0)
-              }
-            />
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold text-sm">Advanced settings</p>
             <p className="text-xs text-muted-foreground">
-              Reserve breathing room so you are not in PTO mode every other week.
+              Toggle timeframe, ranking, and PTO constraints if you want to fine-tune suggestions.
             </p>
           </div>
-          <div className="flex items-start justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/40 p-3">
-            <div>
-              <p className="font-medium text-sm">Stretch around existing PTO</p>
-              <p className="text-xs text-muted-foreground">
-                You currently have {selectedDays.length} PTO days selected. Treat them as anchors so
-                the engine extends those plans.
-              </p>
-            </div>
-            <Switch
-              checked={suggestionPreferences.extendExistingPTO}
-              onCheckedChange={handleToggleAnchors}
-              aria-label="Extend existing PTO"
-            />
-          </div>
+          <Switch
+            checked={showAdvanced}
+            onCheckedChange={setShowAdvanced}
+            aria-label="Toggle advanced PTO suggestion settings"
+          />
         </div>
       </section>
+
+      {showAdvanced && (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ConfigCard
+              icon={<CalendarRange className="h-4 w-4 text-primary" />}
+              title="Timeframe"
+              description="Tell the engine where to look for clever gaps."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="earliestStart">Earliest start</Label>
+                  <Input
+                    id="earliestStart"
+                    type="date"
+                    value={formatDateLocal(suggestionPreferences.earliestStart)}
+                    onChange={(event) => handleDateChange('earliestStart', event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="latestEnd">Latest end</Label>
+                  <Input
+                    id="latestEnd"
+                    type="date"
+                    value={formatDateLocal(suggestionPreferences.latestEnd)}
+                    onChange={(event) => handleDateChange('latestEnd', event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 space-y-1.5">
+                <Label>Ranking mode</Label>
+                <Select
+                  value={suggestionPreferences.rankingMode}
+                  onValueChange={(value) => handleRankingModeChange(value as RankingMode)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Pick a ranking mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RANKING_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedRankingMode?.description ?? 'Pick how you want breaks to be sorted.'}
+                </p>
+              </div>
+            </ConfigCard>
+
+            <ConfigCard
+              icon={<SlidersHorizontal className="h-4 w-4 text-primary" />}
+              title="Usage constraints"
+              description="Fine-tune how aggressive the recommendations should be."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <NumberField
+                  id="minPTOToKeep"
+                  label="Safety reserve"
+                  min={0}
+                  value={suggestionPreferences.minPTOToKeep}
+                  onChange={(value) => handleNumericChange('minPTOToKeep', value, 0)}
+                  suffix="days"
+                />
+                <NumberField
+                  id="maxConsecutiveDaysOff"
+                  label="Max consecutive days off"
+                  min={suggestionPreferences.minConsecutiveDaysOff}
+                  value={suggestionPreferences.maxConsecutiveDaysOff}
+                  onChange={(value) =>
+                    handleNumericChange(
+                      'maxConsecutiveDaysOff',
+                      value,
+                      suggestionPreferences.minConsecutiveDaysOff
+                    )
+                  }
+                  suffix="days"
+                />
+                <NumberField
+                  id="minConsecutiveDaysOff"
+                  label="Min consecutive days off"
+                  min={1}
+                  value={suggestionPreferences.minConsecutiveDaysOff}
+                  onChange={(value) => handleNumericChange('minConsecutiveDaysOff', value, 1)}
+                  suffix="days"
+                />
+              </div>
+            </ConfigCard>
+          </div>
+
+          <section className="rounded-3xl border border-border bg-card/40 p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="minSpacingBetweenBreaks">Spacing between breaks (days)</Label>
+                <Input
+                  id="minSpacingBetweenBreaks"
+                  type="number"
+                  min={0}
+                  value={suggestionPreferences.minSpacingBetweenBreaks}
+                  onChange={(event) =>
+                    handleNumericChange('minSpacingBetweenBreaks', event.target.value, 0)
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Reserve breathing room so you are not in PTO mode every other week.
+                </p>
+              </div>
+              <div className="flex items-start justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/40 p-3">
+                <div>
+                  <p className="font-medium text-sm">Stretch around existing PTO</p>
+                  <p className="text-xs text-muted-foreground">
+                    You currently have {selectedDays.length} PTO days selected. Treat them as anchors so
+                    the engine extends those plans.
+                  </p>
+                </div>
+                <Switch
+                  checked={suggestionPreferences.extendExistingPTO}
+                  onCheckedChange={handleToggleAnchors}
+                  aria-label="Extend existing PTO"
+                />
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="rounded-3xl border border-border bg-card/50 p-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex flex-1 flex-wrap gap-4">
             <Metric label="Breaks planned" value={metrics.breakCount} />
             <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} />
-            <Metric
-              label="PTO used"
-              value={`${metrics.totalPTOUsed}/${suggestionPreferences.maxPTOToUse}d`}
-            />
+            <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} />
             <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} />
             <Metric label="Remaining PTO" value={`${metrics.remainingPTO}d`} />
+            <Metric label="Safety reserve" value={`${suggestionPreferences.minPTOToKeep}d`} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="gap-2"
-              disabled={isGeneratingSuggestions}
-              onClick={handleRegenerate}
-            >
-              {isGeneratingSuggestions ? (
-                <>
-                  <BrainCircuit className="h-4 w-4 animate-spin" />
-                  Regenerating…
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Regenerate
-                </>
-              )}
-            </Button>
             <Button
               type="button"
               className="gap-2"
