@@ -198,10 +198,9 @@ export type RankingMode = 'efficiency' | 'longest' | 'least-pto' | 'earliest';
 export interface SuggestionPreferences {
   earliestStart: Date;
   latestEnd: Date;
-  maxPTOToUse: number;
-  maxPTOPerBreak: number;
+  minPTOToKeep: number;
+  maxConsecutiveDaysOff: number;
   minConsecutiveDaysOff: number;
-  maxSuggestions: number;
   rankingMode: RankingMode;
   minSpacingBetweenBreaks: number;
   extendExistingPTO: boolean;
