@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { usePlanner } from '@/contexts/PlannerContext';
+import type { SuggestedBreak } from '@/types';
 
 const MONTH_NAMES = [
   'January',
@@ -21,10 +22,6 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const DAY_CELL_SIZE_CLASSES = 'h-8 w-8 md:h-10 md:w-10';
-const DAY_OF_WEEK_LABEL_CLASSES = `flex items-center justify-center text-[11px] font-semibold leading-tight text-muted-foreground ${DAY_CELL_SIZE_CLASSES}`;
-const EMPTY_SLOT_CLASSES = `${DAY_CELL_SIZE_CLASSES} pointer-events-none select-none opacity-0`;
-
 export enum DayType {
   NORMAL = 'normal',
   WEEKEND = 'weekend',
@@ -37,6 +34,19 @@ const addDays = (date: Date, days: number) => {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
   return result;
+};
+
+const startOfDay = (date: Date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
+
+const getDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatAmount = (value: number) => {
@@ -73,10 +83,8 @@ const isToday = (date: Date) => {
 const getDayClasses = (type: DayType, options: { isToday?: boolean } = {}) => {
   const { isToday = false } = options;
 
-  const baseClasses = cn(
-    DAY_CELL_SIZE_CLASSES,
-    'flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors',
-  );
+  const baseClasses =
+    'w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-card text-xs font-semibold text-foreground transition-colors';
 
   const typeClasses = {
     [DayType.NORMAL]: 'hover:bg-muted/80',
@@ -88,6 +96,17 @@ const getDayClasses = (type: DayType, options: { isToday?: boolean } = {}) => {
 
   return cn(baseClasses, typeClasses[type], isToday && '!ring-[3px] !ring-foreground');
 };
+
+const formatEfficiency = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '—';
+  }
+  return `${value.toFixed(2)}×`;
+};
+
+interface BreakDayMeta {
+  breakItem: SuggestedBreak;
+}
 
 export interface MonthCardProps {
   month: Date;
@@ -105,7 +124,24 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
     getBalanceAsOf,
     getAccruedAmountUntil,
     getUsedAmountBefore,
+    lastOptimizationResult,
   } = usePlanner();
+
+  const suggestedBreaks = lastOptimizationResult?.breaks ?? [];
+
+  const breakDayMap = useMemo(() => {
+    const map = new Map<string, BreakDayMeta>();
+    suggestedBreaks.forEach((breakItem) => {
+      let cursor = startOfDay(breakItem.start);
+      const end = startOfDay(breakItem.end);
+
+      while (cursor <= end) {
+        map.set(getDateKey(cursor), { breakItem });
+        cursor = addDays(cursor, 1);
+      }
+    });
+    return map;
+  }, [suggestedBreaks]);
 
   const monthStart = useMemo(() => new Date(month.getFullYear(), month.getMonth(), 1), [month]);
   const monthYear = monthStart.getFullYear();
@@ -188,16 +224,13 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
     for (let i = 0; i < firstDayOfMonth; i += 1) {
       result.push(
-        <div
-          key={`empty-${i}`}
-          className={EMPTY_SLOT_CLASSES}
-          aria-hidden="true"
-        />,
+        <div key={`empty-${i}`} className="w-8 h-8 md:w-10 md:h-10" />,
       );
     }
 
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = new Date(monthYear, monthIndex, day);
+      const previousDay = addDays(date, -1);
       const nextDay = addDays(date, 1);
       const balanceAtDayStart = getBalanceAsOf(date);
       const balanceAfterDay = getBalanceAsOf(nextDay);
@@ -217,6 +250,25 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         );
       }
 
+      const breakMeta = breakDayMap.get(getDateKey(date));
+      const previousMeta = breakMeta && breakDayMap.get(getDateKey(previousDay));
+      const nextMeta = breakMeta && breakDayMap.get(getDateKey(addDays(date, 1)));
+      const isSequenceStart =
+        !!breakMeta &&
+        (!previousMeta || previousMeta.breakItem.id !== breakMeta.breakItem.id);
+      const isSequenceEnd =
+        !!breakMeta &&
+        (!nextMeta || nextMeta.breakItem.id !== breakMeta.breakItem.id);
+      const isSoloBreakDay = isSequenceStart && isSequenceEnd;
+
+      if (breakMeta) {
+        dayTooltipLines.push(
+          `Suggested streak: ${breakMeta.breakItem.totalDaysOff} days (${formatEfficiency(
+            breakMeta.breakItem.efficiency,
+          )})`,
+        );
+      }
+
       const isCurrentDay = isToday(date);
 
       const dayType = isDateSelected(date)
@@ -229,17 +281,91 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         ? DayType.WEEKEND
         : DayType.NORMAL;
 
-      result.push(
+      const overlayPadding = 10;
+      const extendPadding = 16;
+      const crossMonthExtension = 2;
+      const crossWeekExtension = 2;
+      const dayOfWeek = date.getDay();
+      const crossesFromPreviousMonth = !isSequenceStart && previousDay.getMonth() !== monthIndex;
+      const crossesIntoNextMonth = !isSequenceEnd && nextDay.getMonth() !== monthIndex;
+      const crossesFromPreviousWeek =
+        !isSequenceStart && !!previousMeta && dayOfWeek === 0;
+      const crossesIntoNextWeek =
+        !isSequenceEnd && !!nextMeta && dayOfWeek === 6;
+      const leftOffset = isSequenceStart || isSoloBreakDay
+        ? overlayPadding
+        : crossesFromPreviousMonth
+        ? -crossMonthExtension
+        : crossesFromPreviousWeek
+        ? -crossWeekExtension
+        : -extendPadding;
+      const rightOffset = isSequenceEnd || isSoloBreakDay
+        ? overlayPadding
+        : crossesIntoNextMonth
+        ? -crossMonthExtension
+        : crossesIntoNextWeek
+        ? -crossWeekExtension
+        : -extendPadding;
+      const overlayStyle: React.CSSProperties = {
+        left: `${leftOffset}px`,
+        right: `${rightOffset}px`,
+        top: '50%',
+        height: '1.75rem',
+        transform: 'translateY(-50%)',
+      };
+
+      const backgroundRadius = cn(
+        isSoloBreakDay
+          ? 'rounded-full'
+          : isSequenceStart
+          ? 'rounded-l-full'
+          : isSequenceEnd
+          ? 'rounded-r-full'
+          : 'rounded-none',
+      );
+
+      const dayNode = (
         <div
           key={`day-${day}`}
-          className={getDayClasses(dayType, { isToday: isCurrentDay })}
-          onClick={() => onDayClick(date)}
-          title={dayTooltipLines.join('\n')}
-          aria-label={dayTooltipLines.join('. ')}
+          className="relative flex h-full w-full items-center justify-center"
         >
-          {day}
-        </div>,
+          {breakMeta && (
+            <>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'pointer-events-none absolute bg-muted',
+                  backgroundRadius,
+                )}
+                style={{ ...overlayStyle, opacity: 0.3 }}
+              />
+            </>
+          )}
+          <div
+            className={cn(
+              getDayClasses(dayType, { isToday: isCurrentDay }),
+              'relative z-[1]',
+            )}
+            onClick={() => onDayClick(date)}
+            title={dayTooltipLines.join('\n')}
+            aria-label={dayTooltipLines.join('. ')}
+          >
+            {day}
+          </div>
+          {breakMeta && isSequenceEnd && (
+            <span
+              className="pointer-events-none absolute right-0 top-1/2 z-[2] flex -translate-y-1/2 translate-x-1/2 items-center rounded-full border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground shadow-sm"
+              title={`Suggested streak: ${breakMeta.breakItem.totalDaysOff} days (${formatEfficiency(
+                breakMeta.breakItem.efficiency,
+              )})`}
+            >
+              {breakMeta.breakItem.totalDaysOff}d
+            </span>
+          )}
+        </div>
       );
+
+      result.push(dayNode);
     }
 
     const totalSlotsUsed = firstDayOfMonth + daysInMonth;
@@ -248,11 +374,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
     for (let i = 0; i < trailingSlots; i += 1) {
       result.push(
-        <div
-          key={`empty-trailing-${i}`}
-          className={EMPTY_SLOT_CLASSES}
-          aria-hidden="true"
-        />,
+        <div key={`empty-trailing-${i}`} className="w-8 h-8 md:w-10 md:h-10" />,
       );
     }
 
@@ -270,6 +392,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
     isDateSuggested,
     isDateHoliday,
     isDateWeekend,
+    breakDayMap,
   ]);
 
   return (
@@ -294,11 +417,11 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
           )} ${unitLabel} of ${formatAmount(totalCapacity)} ${unitLabel}`}
         </div>
       </div>
-      <div className="grid grid-cols-7 gap-1 justify-items-center">
+      <div className="grid grid-cols-7 gap-1">
         {DAYS_OF_WEEK.map((dayLabel) => (
           <div
             key={dayLabel}
-            className={DAY_OF_WEEK_LABEL_CLASSES}
+            className="text-xs text-center font-medium text-muted-foreground"
           >
             {dayLabel}
           </div>
