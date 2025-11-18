@@ -21,6 +21,7 @@ const MONTH_NAMES = [
 ];
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 export enum DayType {
   NORMAL = 'normal',
@@ -108,6 +109,22 @@ interface BreakDayMeta {
   breakItem: SuggestedBreak;
 }
 
+interface StreakHighlightMeta {
+  id: string;
+  start: Date;
+  end: Date;
+  totalDays: number;
+  hasSuggested: boolean;
+  hasActual: boolean;
+}
+
+interface DayOffInfo {
+  isSelected: boolean;
+  isSuggested: boolean;
+  isHoliday: boolean;
+  isWeekend: boolean;
+}
+
 export interface MonthCardProps {
   month: Date;
   onDayClick: (date: Date) => void;
@@ -120,6 +137,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
     isDateSuggested,
     isDateHoliday,
     isDateWeekend,
+    suggestionPreferences,
     getSettings,
     getBalanceAsOf,
     getAccruedAmountUntil,
@@ -128,6 +146,10 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
   } = usePlanner();
 
   const suggestedBreaks = lastOptimizationResult?.breaks ?? [];
+  const streakHighlightThreshold = Math.max(
+    3,
+    Math.floor(suggestionPreferences?.streakHighlightThreshold ?? 3),
+  );
 
   const breakDayMap = useMemo(() => {
     const map = new Map<string, BreakDayMeta>();
@@ -221,6 +243,103 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
 
   const days = useMemo(() => {
     const result: React.ReactNode[] = [];
+    const highlightCache = new Map<string, StreakHighlightMeta | null>();
+    const dayOffInfoCache = new Map<string, DayOffInfo | null>();
+    const minHighlightLength = Math.max(3, streakHighlightThreshold);
+
+    const getDayOffInfo = (rawDate: Date): DayOffInfo | null => {
+      const normalized = startOfDay(rawDate);
+      const key = getDateKey(normalized);
+
+      if (dayOffInfoCache.has(key)) {
+        return dayOffInfoCache.get(key) ?? null;
+      }
+
+      const info: DayOffInfo = {
+        isSelected: isDateSelected(normalized),
+        isSuggested: isDateSuggested(normalized),
+        isHoliday: isDateHoliday(normalized),
+        isWeekend: isDateWeekend(normalized),
+      };
+
+      const isDayOff =
+        info.isSelected || info.isSuggested || info.isHoliday || info.isWeekend;
+
+      dayOffInfoCache.set(key, isDayOff ? info : null);
+
+      return isDayOff ? info : null;
+    };
+
+    const getStreakMetaForDate = (rawDate: Date): StreakHighlightMeta | null => {
+      const normalized = startOfDay(rawDate);
+      const key = getDateKey(normalized);
+
+      if (highlightCache.has(key)) {
+        return highlightCache.get(key) ?? null;
+      }
+
+      const initialInfo = getDayOffInfo(normalized);
+
+      if (!initialInfo) {
+        highlightCache.set(key, null);
+        return null;
+      }
+
+      let streakStart = normalized;
+      let streakEnd = normalized;
+      let hasSuggested = initialInfo.isSuggested;
+      let hasActual = initialInfo.isSelected || initialInfo.isHoliday;
+
+      let previousCursor = addDays(streakStart, -1);
+      let previousInfo = getDayOffInfo(previousCursor);
+      while (previousInfo) {
+        streakStart = startOfDay(previousCursor);
+        hasSuggested = hasSuggested || previousInfo.isSuggested;
+        hasActual =
+          hasActual || previousInfo.isSelected || previousInfo.isHoliday;
+        previousCursor = addDays(previousCursor, -1);
+        previousInfo = getDayOffInfo(previousCursor);
+      }
+
+      let nextCursor = addDays(streakEnd, 1);
+      let nextInfo = getDayOffInfo(nextCursor);
+      while (nextInfo) {
+        streakEnd = startOfDay(nextCursor);
+        hasSuggested = hasSuggested || nextInfo.isSuggested;
+        hasActual = hasActual || nextInfo.isSelected || nextInfo.isHoliday;
+        nextCursor = addDays(nextCursor, 1);
+        nextInfo = getDayOffInfo(nextCursor);
+      }
+
+      const totalDays =
+        Math.round((streakEnd.getTime() - streakStart.getTime()) / MS_IN_DAY) + 1;
+
+      if (totalDays < minHighlightLength) {
+        let cursor = streakStart;
+        while (cursor.getTime() <= streakEnd.getTime()) {
+          highlightCache.set(getDateKey(cursor), null);
+          cursor = addDays(cursor, 1);
+        }
+        return null;
+      }
+
+      const meta: StreakHighlightMeta = {
+        id: `${streakStart.toISOString()}__${streakEnd.toISOString()}`,
+        start: streakStart,
+        end: streakEnd,
+        totalDays,
+        hasSuggested,
+        hasActual,
+      };
+
+      let cursor = streakStart;
+      while (cursor.getTime() <= streakEnd.getTime()) {
+        highlightCache.set(getDateKey(cursor), meta);
+        cursor = addDays(cursor, 1);
+      }
+
+      return meta;
+    };
 
     for (let i = 0; i < firstDayOfMonth; i += 1) {
       result.push(
@@ -250,16 +369,27 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         );
       }
 
+      const streakMeta = getStreakMetaForDate(date);
+      const previousStreakMeta =
+        streakMeta ? getStreakMetaForDate(previousDay) : null;
+      const nextStreakMeta = streakMeta ? getStreakMetaForDate(nextDay) : null;
+      const isStreakStart =
+        !!streakMeta &&
+        (!previousStreakMeta || previousStreakMeta.id !== streakMeta.id);
+      const isStreakEnd =
+        !!streakMeta &&
+        (!nextStreakMeta || nextStreakMeta.id !== streakMeta.id);
+      const isSoloStreakDay = isStreakStart && isStreakEnd;
+
+      if (streakMeta) {
+        dayTooltipLines.push(
+          `Consecutive days off: ${streakMeta.totalDays} days`,
+        );
+      }
+
       const breakMeta = breakDayMap.get(getDateKey(date));
-      const previousMeta = breakMeta && breakDayMap.get(getDateKey(previousDay));
-      const nextMeta = breakMeta && breakDayMap.get(getDateKey(addDays(date, 1)));
-      const isSequenceStart =
-        !!breakMeta &&
-        (!previousMeta || previousMeta.breakItem.id !== breakMeta.breakItem.id);
-      const isSequenceEnd =
-        !!breakMeta &&
-        (!nextMeta || nextMeta.breakItem.id !== breakMeta.breakItem.id);
-      const isSoloBreakDay = isSequenceStart && isSequenceEnd;
+      const isSuggestedStreak = !!(streakMeta && streakMeta.hasSuggested);
+      const hasActualCore = !!(streakMeta && streakMeta.hasActual);
 
       if (breakMeta) {
         dayTooltipLines.push(
@@ -286,26 +416,34 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
       const crossMonthExtension = 2;
       const crossWeekExtension = 2;
       const dayOfWeek = date.getDay();
-      const crossesFromPreviousMonth = !isSequenceStart && previousDay.getMonth() !== monthIndex;
-      const crossesIntoNextMonth = !isSequenceEnd && nextDay.getMonth() !== monthIndex;
-      const crossesFromPreviousWeek =
-        !isSequenceStart && !!previousMeta && dayOfWeek === 0;
-      const crossesIntoNextWeek =
-        !isSequenceEnd && !!nextMeta && dayOfWeek === 6;
-      const leftOffset = isSequenceStart || isSoloBreakDay
-        ? overlayPadding
-        : crossesFromPreviousMonth
-        ? -crossMonthExtension
-        : crossesFromPreviousWeek
-        ? -crossWeekExtension
-        : -extendPadding;
-      const rightOffset = isSequenceEnd || isSoloBreakDay
-        ? overlayPadding
-        : crossesIntoNextMonth
-        ? -crossMonthExtension
-        : crossesIntoNextWeek
-        ? -crossWeekExtension
-        : -extendPadding;
+      const crossesFromPreviousMonth = !!(
+        streakMeta && !isStreakStart && previousDay.getMonth() !== monthIndex
+      );
+      const crossesIntoNextMonth = !!(
+        streakMeta && !isStreakEnd && nextDay.getMonth() !== monthIndex
+      );
+      const crossesFromPreviousWeek = !!(
+        streakMeta && !isStreakStart && !!previousStreakMeta && dayOfWeek === 0
+      );
+      const crossesIntoNextWeek = !!(
+        streakMeta && !isStreakEnd && !!nextStreakMeta && dayOfWeek === 6
+      );
+      const leftOffset =
+        !streakMeta || isStreakStart || isSoloStreakDay
+          ? overlayPadding
+          : crossesFromPreviousMonth
+          ? -crossMonthExtension
+          : crossesFromPreviousWeek
+          ? -crossWeekExtension
+          : -extendPadding;
+      const rightOffset =
+        !streakMeta || isStreakEnd || isSoloStreakDay
+          ? overlayPadding
+          : crossesIntoNextMonth
+          ? -crossMonthExtension
+          : crossesIntoNextWeek
+          ? -crossWeekExtension
+          : -extendPadding;
       const overlayStyle: React.CSSProperties = {
         left: `${leftOffset}px`,
         right: `${rightOffset}px`,
@@ -313,13 +451,20 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
         height: '1.75rem',
         transform: 'translateY(-50%)',
       };
+      const overlayOpacity = streakMeta
+        ? isSuggestedStreak
+          ? 0.18
+          : hasActualCore
+          ? 0.45
+          : 0.35
+        : 0;
 
       const backgroundRadius = cn(
-        isSoloBreakDay
+        !streakMeta || isSoloStreakDay
           ? 'rounded-full'
-          : isSequenceStart
+          : isStreakStart
           ? 'rounded-l-full'
-          : isSequenceEnd
+          : isStreakEnd
           ? 'rounded-r-full'
           : 'rounded-none',
       );
@@ -329,17 +474,15 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
           key={`day-${day}`}
           className="relative flex h-full w-full items-center justify-center"
         >
-          {breakMeta && (
-            <>
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'pointer-events-none absolute bg-muted',
-                  backgroundRadius,
-                )}
-                style={{ ...overlayStyle, opacity: 0.3 }}
-              />
-            </>
+          {streakMeta && (
+            <span
+              aria-hidden="true"
+              className={cn(
+                'pointer-events-none absolute bg-muted',
+                backgroundRadius,
+              )}
+              style={{ ...overlayStyle, opacity: overlayOpacity }}
+            />
           )}
           <div
             className={cn(
@@ -352,14 +495,19 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
           >
             {day}
           </div>
-          {breakMeta && isSequenceEnd && (
+          {streakMeta && isStreakEnd && (
             <span
               className="pointer-events-none absolute right-0 top-1/2 z-[2] flex -translate-y-1/2 translate-x-1/2 items-center rounded-full border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground shadow-sm"
-              title={`Suggested streak: ${breakMeta.breakItem.totalDaysOff} days (${formatEfficiency(
-                breakMeta.breakItem.efficiency,
-              )})`}
+              title={
+                breakMeta
+                  ? `Suggested streak: ${breakMeta.breakItem.totalDaysOff} days (${formatEfficiency(
+                      breakMeta.breakItem.efficiency,
+                    )})`
+                  : `Consecutive days off: ${streakMeta.totalDays} days`
+              }
+              style={isSuggestedStreak ? { opacity: 0.65 } : undefined}
             >
-              {breakMeta.breakItem.totalDaysOff}d
+              {`${breakMeta ? breakMeta.breakItem.totalDaysOff : streakMeta.totalDays}d`}
             </span>
           )}
         </div>
@@ -393,6 +541,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
     isDateHoliday,
     isDateWeekend,
     breakDayMap,
+    streakHighlightThreshold,
   ]);
 
   return (

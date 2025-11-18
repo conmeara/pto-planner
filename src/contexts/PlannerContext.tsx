@@ -139,6 +139,7 @@ type StoredSuggestionPreferences = {
   minPTOToKeep?: number;
   maxConsecutiveDaysOff?: number;
   minConsecutiveDaysOff?: number;
+  streakHighlightThreshold?: number;
   rankingMode?: RankingMode;
   minSpacingBetweenBreaks?: number;
   extendExistingPTO?: boolean;
@@ -166,6 +167,7 @@ function getDefaultSuggestionPreferences(): SuggestionPreferences {
     minPTOToKeep: 2,
     maxConsecutiveDaysOff: 14,
     minConsecutiveDaysOff: 4,
+    streakHighlightThreshold: 3,
     rankingMode: 'efficiency',
     minSpacingBetweenBreaks: 14,
     extendExistingPTO: true,
@@ -210,6 +212,10 @@ function loadInitialSuggestionPreferences(): SuggestionPreferences {
         storedAny.minConsecutiveDaysOff,
         fallback.minConsecutiveDaysOff
       ),
+      streakHighlightThreshold: coerceNumber(
+        storedAny.streakHighlightThreshold,
+        fallback.streakHighlightThreshold
+      ),
       rankingMode: isRankingMode(storedAny.rankingMode) ? storedAny.rankingMode : fallback.rankingMode,
       minSpacingBetweenBreaks: coerceNumber(
         storedAny.minSpacingBetweenBreaks,
@@ -233,6 +239,7 @@ function persistSuggestionPreferences(preferences: SuggestionPreferences) {
     minPTOToKeep: preferences.minPTOToKeep,
     maxConsecutiveDaysOff: preferences.maxConsecutiveDaysOff,
     minConsecutiveDaysOff: preferences.minConsecutiveDaysOff,
+    streakHighlightThreshold: preferences.streakHighlightThreshold,
     rankingMode: preferences.rankingMode,
     minSpacingBetweenBreaks: preferences.minSpacingBetweenBreaks,
     extendExistingPTO: preferences.extendExistingPTO,
