@@ -1,6 +1,6 @@
 "use server";
 
-import { encodedRedirect } from "@/utils/utils";
+import { encodedRedirect, getURL } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -10,7 +10,7 @@ export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
   const supabase = await createClient();
-  const origin = (await headers()).get("origin");
+  const origin = getURL();
 
   if (!email || !password) {
     return encodedRedirect(
@@ -24,7 +24,7 @@ export const signUpAction = async (formData: FormData) => {
     email,
     password,
     options: {
-      emailRedirectTo: `${origin}/auth/callback`,
+      emailRedirectTo: `${origin}auth/callback`,
     },
   });
 
@@ -69,7 +69,7 @@ export const signInAction = async (formData: FormData) => {
 export const signInWithMagicLinkAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const supabase = await createClient();
-  const origin = (await headers()).get("origin");
+  const origin = getURL();
 
   if (!email) {
     return { success: false, error: "Email is required" };
@@ -78,7 +78,7 @@ export const signInWithMagicLinkAction = async (formData: FormData) => {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${origin}/auth/callback?redirect_to=/dashboard`,
+      emailRedirectTo: `${origin}auth/callback?redirect_to=/dashboard`,
     },
   });
 
@@ -93,7 +93,7 @@ export const signInWithMagicLinkAction = async (formData: FormData) => {
 export const forgotPasswordAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const supabase = await createClient();
-  const origin = (await headers()).get("origin");
+  const origin = getURL();
   const callbackUrl = formData.get("callbackUrl")?.toString();
 
   if (!email) {
@@ -101,7 +101,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
   }
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback?redirect_to=/protected/reset-password`,
+    redirectTo: `${origin}auth/callback?redirect_to=/protected/reset-password`,
   });
 
   if (error) {

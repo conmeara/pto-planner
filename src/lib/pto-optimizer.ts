@@ -210,11 +210,14 @@ export function optimizePTO(
   const sanitized = sanitizePreferences(preferences);
   const { earliestStart, latestEnd } = sanitized;
 
-  if (earliestStart > latestEnd) {
-    return emptyResult();
-  }
-
   const availableBudget = Math.max(0, Math.floor(config.availablePTO));
+
+  if (earliestStart > latestEnd) {
+    return {
+      ...emptyResult(),
+      remainingPTO: availableBudget,
+    };
+  }
 
   if (availableBudget <= 0 || sanitized.maxConsecutiveDaysOff <= 0) {
     return {
@@ -310,6 +313,18 @@ const sanitizePreferences = (
 
   if (latest < earliest) {
     [earliest, latest] = [latest, earliest];
+  }
+
+  // Filter out past dates: suggestions must start from tomorrow at the earliest
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  if (earliest < tomorrow) {
+    earliest = tomorrow;
+  }
+
+  // Ensure latest is not before earliest (if it was, or if earliest moved past it)
+  if (latest < earliest) {
+    latest = earliest;
   }
 
   const minDaysOff = Math.max(1, Math.floor(preferences.minConsecutiveDaysOff));

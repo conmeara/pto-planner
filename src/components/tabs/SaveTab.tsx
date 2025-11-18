@@ -8,10 +8,8 @@ import {
   CheckCircle,
   Github,
   MailCheck,
-  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { signInWithMagicLinkAction, signOutAction } from '@/app/actions';
@@ -65,55 +63,42 @@ const SaveTab: React.FC = () => {
   return (
     <div className="space-y-4">
       {!isLoggedIn ? (
-        <div className="space-y-3 rounded-3xl border border-border bg-card px-4 py-4">
-          <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
-            <div className="flex items-start gap-2 text-foreground">
-              <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
-              <p className="font-medium">
-                Your plan auto-saves on this browser—no account required.
-              </p>
+        <div className="space-y-3 rounded-3xl bg-card px-4 py-4">
+          <form onSubmit={handleSignIn} className="flex gap-2">
+            <div className="relative flex-1">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="pl-9"
+                required
+              />
             </div>
-            <p>
-              Want your selected days and settings to travel with you? Enter your email and we&apos;ll send a password-free magic link that syncs everything securely across devices.
-            </p>
-          </div>
-          <form onSubmit={handleSignIn} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Email address
-              </Label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Mail className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/80" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="!h-8 pl-8 pr-2 text-xs"
-                    required
-                  />
-                </div>
-                <Button type="submit" size="sm" className="min-w-24" disabled={isSendingLink}>
-                  <MailCheck className="mr-2 h-3.5 w-3.5" />
-                  {isSendingLink ? 'Sending…' : 'Send link'}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                We&apos;ll email a one-time sign-in link—no password to remember.
-              </p>
-            </div>
+
+            <Button type="submit" disabled={isSendingLink}>
+              {isSendingLink ? (
+                'Sending...'
+              ) : (
+                <>
+                  <MailCheck className="mr-2 h-4 w-4" />
+                  Send Magic Link
+                </>
+              )}
+            </Button>
           </form>
+
           {error && (
-            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
-              ✗ {error}
+            <div className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {error}
             </div>
           )}
+
           {showSuccess && (
-            <div className="flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-foreground">
-              <CheckCircle className="h-3.5 w-3.5 text-primary" />
-              Magic link sent! Open it on any device to sync your PTO plan.
+            <div className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
+              Check your email for the magic link!
             </div>
           )}
         </div>
