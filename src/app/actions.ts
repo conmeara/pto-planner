@@ -69,12 +69,9 @@ export const signInAction = async (formData: FormData) => {
 export const signInWithMagicLinkAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const supabase = await createClient();
-  const origin = await getURL();
 
-  // Always use production URL for magic links to ensure they work even when testing locally
-  const redirectOrigin = process.env.NODE_ENV === "production"
-    ? origin
-    : (process.env.NEXT_PUBLIC_SITE_URL || "https://ptoplanner.vercel.app/");
+  // Force production URL for magic links
+  const redirectOrigin = "https://ptoplanner.vercel.app";
 
   if (!email) {
     return { success: false, error: "Email is required" };
@@ -83,7 +80,7 @@ export const signInWithMagicLinkAction = async (formData: FormData) => {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${redirectOrigin}auth/callback?redirect_to=/`,
+      emailRedirectTo: `${redirectOrigin}/auth/callback?redirect_to=/`,
     },
   });
 
