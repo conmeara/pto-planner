@@ -10,7 +10,7 @@ export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
   const supabase = await createClient();
-  const origin = getURL();
+  const origin = await getURL();
 
   if (!email || !password) {
     return encodedRedirect(
@@ -69,7 +69,7 @@ export const signInAction = async (formData: FormData) => {
 export const signInWithMagicLinkAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const supabase = await createClient();
-  const origin = getURL();
+  const origin = await getURL();
 
   if (!email) {
     return { success: false, error: "Email is required" };
@@ -93,7 +93,7 @@ export const signInWithMagicLinkAction = async (formData: FormData) => {
 export const forgotPasswordAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const supabase = await createClient();
-  const origin = getURL();
+  const origin = await getURL();
   const callbackUrl = formData.get("callbackUrl")?.toString();
 
   if (!email) {
