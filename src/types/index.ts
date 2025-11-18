@@ -201,6 +201,7 @@ export interface SuggestionPreferences {
   minPTOToKeep: number;
   maxConsecutiveDaysOff: number;
   minConsecutiveDaysOff: number;
+  streakHighlightThreshold: number;
   rankingMode: RankingMode;
   minSpacingBetweenBreaks: number;
   extendExistingPTO: boolean;

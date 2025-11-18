@@ -23,7 +23,8 @@ type NumericPreferenceField =
   | 'minPTOToKeep'
   | 'maxConsecutiveDaysOff'
   | 'minConsecutiveDaysOff'
-  | 'minSpacingBetweenBreaks';
+  | 'minSpacingBetweenBreaks'
+  | 'streakHighlightThreshold';
 
 const RANKING_MODE_OPTIONS: Array<{ value: RankingMode; label: string; description: string }> = [
   {
@@ -228,6 +229,14 @@ const SuggestedPTOTab: React.FC = () => {
                   min={1}
                   value={suggestionPreferences.minConsecutiveDaysOff}
                   onChange={(value) => handleNumericChange('minConsecutiveDaysOff', value, 1)}
+                  suffix="days"
+                />
+                <NumberField
+                  id="streakHighlightThreshold"
+                  label="Highlight streaks of at least"
+                  min={3}
+                  value={suggestionPreferences.streakHighlightThreshold}
+                  onChange={(value) => handleNumericChange('streakHighlightThreshold', value, 3)}
                   suffix="days"
                 />
               </div>
