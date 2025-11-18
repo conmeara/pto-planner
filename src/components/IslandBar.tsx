@@ -226,7 +226,7 @@ const IslandBar: React.FC<IslandBarProps> = ({ className }) => {
       case TabType.PTO:
         return <PTOTab onHeaderActionsChange={setHeaderActionsCallback} />;
       case TabType.SUGGESTED_PTO:
-        return <SuggestedPTOTab />;
+        return <SuggestedPTOTab onHeaderActionsChange={setHeaderActionsCallback} />;
       case TabType.PUBLIC_HOLIDAYS:
         return <HolidaysTab />;
       case TabType.WEEKENDS:

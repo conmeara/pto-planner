@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useLayoutEffect } from 'react';
 import {
   BrainCircuit,
   CalendarRange,
@@ -16,6 +16,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : React.useEffect;
+
+interface SuggestedPTOTabProps {
+  onHeaderActionsChange?: (actions: React.ReactNode | null) => void;
+}
 
 const EFFICIENCY_FORMATTER = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -51,7 +58,7 @@ const RANKING_MODE_OPTIONS: Array<{ value: RankingMode; label: string; descripti
 
 const formatEfficiency = (value: number) => (value > 0 ? `${EFFICIENCY_FORMATTER.format(value)}×` : '—');
 
-const SuggestedPTOTab: React.FC = () => {
+const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange }) => {
   const {
     suggestionPreferences,
     updateSuggestionPreferences,
@@ -64,6 +71,7 @@ const SuggestedPTOTab: React.FC = () => {
   } = usePlanner();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [renderedInHeader, setRenderedInHeader] = useState(false);
 
   const breaks = lastOptimizationResult?.breaks ?? [];
 
@@ -126,21 +134,73 @@ const SuggestedPTOTab: React.FC = () => {
   const disableApply = suggestedDays.length === 0;
   const disableClear = disableApply && breaks.length === 0;
 
+  const advancedToggleNode = useMemo(
+    () => (
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <label htmlFor="advanced-toggle-suggested" className="cursor-pointer">Advanced</label>
+        <Switch
+          id="advanced-toggle-suggested"
+          checked={showAdvanced}
+          onCheckedChange={setShowAdvanced}
+          aria-label="Toggle advanced PTO suggestion settings"
+        />
+      </div>
+    ),
+    [showAdvanced]
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (!onHeaderActionsChange) {
+      setRenderedInHeader(false);
+      return;
+    }
+
+    onHeaderActionsChange(advancedToggleNode);
+    setRenderedInHeader(true);
+
+    return () => {
+      setRenderedInHeader(false);
+      onHeaderActionsChange(null);
+    };
+  }, [advancedToggleNode, onHeaderActionsChange]);
+
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-border bg-card/40 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-sm">Advanced settings</p>
-            <p className="text-xs text-muted-foreground">
-              Toggle timeframe, ranking, and PTO constraints if you want to fine-tune suggestions.
-            </p>
+      {!renderedInHeader && (
+        <div className="flex justify-end">{advancedToggleNode}</div>
+      )}
+
+      <section className="rounded-3xl border border-border bg-card/50 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-1 flex-wrap gap-4">
+            <Metric label="Breaks planned" value={metrics.breakCount} />
+            <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} />
+            <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} />
+            <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} />
+            <Metric label="Remaining PTO" value={`${metrics.remainingPTO}d`} />
+            <Metric label="Safety reserve" value={`${suggestionPreferences.minPTOToKeep}d`} />
           </div>
-          <Switch
-            checked={showAdvanced}
-            onCheckedChange={setShowAdvanced}
-            aria-label="Toggle advanced PTO suggestion settings"
-          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              className="gap-2"
+              onClick={handleApply}
+              disabled={disableApply}
+            >
+              <Sparkles className="h-4 w-4" />
+              Apply {suggestedDays.length > 0 ? `${suggestedDays.length} day${suggestedDays.length !== 1 ? 's' : ''}` : ''}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="gap-2"
+              onClick={handleClear}
+              disabled={disableClear}
+            >
+              <Eraser className="h-4 w-4" />
+              Clear
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -278,40 +338,6 @@ const SuggestedPTOTab: React.FC = () => {
           </section>
         </>
       )}
-
-      <section className="rounded-3xl border border-border bg-card/50 p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex flex-1 flex-wrap gap-4">
-            <Metric label="Breaks planned" value={metrics.breakCount} />
-            <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} />
-            <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} />
-            <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} />
-            <Metric label="Remaining PTO" value={`${metrics.remainingPTO}d`} />
-            <Metric label="Safety reserve" value={`${suggestionPreferences.minPTOToKeep}d`} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              className="gap-2"
-              onClick={handleApply}
-              disabled={disableApply}
-            >
-              <Sparkles className="h-4 w-4" />
-              Apply {suggestedDays.length > 0 ? `${suggestedDays.length} day${suggestedDays.length !== 1 ? 's' : ''}` : ''}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="gap-2"
-              onClick={handleClear}
-              disabled={disableClear}
-            >
-              <Eraser className="h-4 w-4" />
-              Clear
-            </Button>
-          </div>
-        </div>
-      </section>
 
       {isGeneratingSuggestions && (
         <div className="flex items-center gap-2 rounded-3xl border border-dashed border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
