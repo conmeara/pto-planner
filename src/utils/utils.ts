@@ -16,10 +16,10 @@ export function encodedRedirect(
   return redirect(`${path}?${type}=${encodeURIComponent(message)}`);
 }
 
-export const getURL = () => {
-  const headersList = (() => {
+export const getURL = async () => {
+  const headersList = await (async () => {
     try {
-      return headers();
+      return await headers();
     } catch {
       return null;
     }
