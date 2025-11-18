@@ -45,7 +45,7 @@ export function optimizePTO(
 ```
 
 ### 3.1 Timeline Preparation
-1. Clamp the timeframe to [`earliestStart`, `latestEnd`] and drop past days.
+1. Clamp the timeframe to [`earliestStart`, `latestEnd`] and strictly exclude any dates on or before the current day (suggestions always start from tomorrow).
 2. Build a `DayInfo` record for every date in range marking weekends, holidays, and selected PTO.
 3. Collapse consecutive non-working days into anchor segments. Each segment records its source (weekend, holiday, existing PTO, timeframe boundary) and whether it counts toward the eventual streak length (existing PTO only counts when `extendExistingPTO` is enabled).
 

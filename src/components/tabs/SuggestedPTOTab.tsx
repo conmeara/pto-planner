@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useMemo, useState, useLayoutEffect } from 'react';
+import React, { useEffect, useMemo, useState, useLayoutEffect } from 'react';
 import {
   BrainCircuit,
   CalendarRange,
   Eraser,
   SlidersHorizontal,
-  Sparkles,
 } from 'lucide-react';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { formatDateLocal, parseDateLocal } from '@/lib/date-utils';
@@ -58,17 +57,55 @@ const RANKING_MODE_OPTIONS: Array<{ value: RankingMode; label: string; descripti
 
 const formatEfficiency = (value: number) => (value > 0 ? `${EFFICIENCY_FORMATTER.format(value)}×` : '—');
 
+const computeTomorrowDateString = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  today.setDate(today.getDate() + 1);
+  return formatDateLocal(today);
+};
+
 const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange }) => {
   const {
     suggestionPreferences,
     updateSuggestionPreferences,
     isGeneratingSuggestions,
     lastOptimizationResult,
-    suggestedDays,
-    applySuggestions,
     clearSuggestions,
     selectedDays,
   } = usePlanner();
+
+  const [minDate, setMinDate] = useState(() => computeTomorrowDateString());
+
+  useEffect(() => {
+    const msUntilNextMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0,
+        0,
+        0,
+        0
+      );
+      return nextMidnight.getTime() - now.getTime();
+    };
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const scheduleUpdate = () => {
+      timer = setTimeout(() => {
+        setMinDate(computeTomorrowDateString());
+        scheduleUpdate();
+      }, msUntilNextMidnight());
+    };
+
+    scheduleUpdate();
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [renderedInHeader, setRenderedInHeader] = useState(false);
@@ -76,14 +113,29 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
   const breaks = lastOptimizationResult?.breaks ?? [];
 
   const metrics = useMemo(() => {
+    const breakCount = breaks.length;
+    const totalPTOUsed = lastOptimizationResult?.totalPTOUsed ?? 0;
+    const totalDaysOff = lastOptimizationResult?.totalDaysOff ?? 0;
+    const averageEfficiency = lastOptimizationResult?.averageEfficiency ?? 0;
+    const remainingPTO = lastOptimizationResult?.remainingPTO ?? 0;
+
+    const streakLengths = breaks.map((breakItem) => breakItem.totalDaysOff);
+    const longestStreak = streakLengths.length > 0 ? Math.max(...streakLengths) : 0;
+    const averageStreak =
+      streakLengths.length > 0
+        ? streakLengths.reduce((sum, length) => sum + length, 0) / streakLengths.length
+        : 0;
+
     return {
-      breakCount: breaks.length,
-      totalPTOUsed: lastOptimizationResult?.totalPTOUsed ?? 0,
-      totalDaysOff: lastOptimizationResult?.totalDaysOff ?? 0,
-      averageEfficiency: lastOptimizationResult?.averageEfficiency ?? 0,
-      remainingPTO: lastOptimizationResult?.remainingPTO ?? 0,
+      breakCount,
+      totalPTOUsed,
+      totalDaysOff,
+      averageEfficiency,
+      remainingPTO,
+      longestStreak,
+      averageStreak,
     };
-  }, [breaks.length, lastOptimizationResult]);
+  }, [breaks, lastOptimizationResult]);
 
   const selectedRankingMode = useMemo(
     () => RANKING_MODE_OPTIONS.find((option) => option.value === suggestionPreferences.rankingMode),
@@ -123,30 +175,38 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
     updateSuggestionPreferences({ extendExistingPTO: checked });
   };
 
-  const handleApply = () => {
-    applySuggestions();
-  };
-
   const handleClear = () => {
     clearSuggestions();
   };
 
-  const disableApply = suggestedDays.length === 0;
-  const disableClear = disableApply && breaks.length === 0;
+  const disableClear = breaks.length === 0;
 
   const advancedToggleNode = useMemo(
     () => (
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <label htmlFor="advanced-toggle-suggested" className="cursor-pointer">Advanced</label>
-        <Switch
-          id="advanced-toggle-suggested"
-          checked={showAdvanced}
-          onCheckedChange={setShowAdvanced}
-          aria-label="Toggle advanced PTO suggestion settings"
-        />
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          onClick={handleClear}
+          disabled={disableClear}
+        >
+          <Eraser className="h-4 w-4" />
+          Clear
+        </Button>
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <label htmlFor="advanced-toggle-suggested" className="cursor-pointer">Advanced</label>
+          <Switch
+            id="advanced-toggle-suggested"
+            checked={showAdvanced}
+            onCheckedChange={setShowAdvanced}
+            aria-label="Toggle advanced PTO suggestion settings"
+          />
+        </div>
       </div>
     ),
-    [showAdvanced]
+    [showAdvanced, disableClear, handleClear]
   );
 
   useIsomorphicLayoutEffect(() => {
@@ -171,37 +231,36 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
       )}
 
       <section className="rounded-3xl border border-border bg-card/50 p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex flex-1 flex-wrap gap-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label className="text-[11px] uppercase text-muted-foreground">Ranking mode</Label>
+            <Select
+              value={suggestionPreferences.rankingMode}
+              onValueChange={(value) => handleRankingModeChange(value as RankingMode)}
+            >
+              <SelectTrigger className="mt-1.5 h-9 w-[180px]">
+                <SelectValue placeholder="Pick a ranking mode" />
+              </SelectTrigger>
+              <SelectContent>
+                {RANKING_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-4">
             <Metric label="Breaks planned" value={metrics.breakCount} />
+            <Metric label="Longest break" value={`${metrics.longestStreak}d`} />
             <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} />
             <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} />
             <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} />
-            <Metric label="Remaining PTO" value={`${metrics.remainingPTO}d`} />
-            <Metric label="Safety reserve" value={`${suggestionPreferences.minPTOToKeep}d`} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              className="gap-2"
-              onClick={handleApply}
-              disabled={disableApply}
-            >
-              <Sparkles className="h-4 w-4" />
-              Apply {suggestedDays.length > 0 ? `${suggestedDays.length} day${suggestedDays.length !== 1 ? 's' : ''}` : ''}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="gap-2"
-              onClick={handleClear}
-              disabled={disableClear}
-            >
-              <Eraser className="h-4 w-4" />
-              Clear
-            </Button>
           </div>
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {selectedRankingMode?.description ?? 'Pick how you want breaks to be sorted.'}
+        </p>
       </section>
 
       {showAdvanced && (
@@ -218,6 +277,7 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
                   <Input
                     id="earliestStart"
                     type="date"
+                    min={minDate}
                     value={formatDateLocal(suggestionPreferences.earliestStart)}
                     onChange={(event) => handleDateChange('earliestStart', event.target.value)}
                   />
@@ -227,31 +287,36 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
                   <Input
                     id="latestEnd"
                     type="date"
+                    min={minDate}
                     value={formatDateLocal(suggestionPreferences.latestEnd)}
                     onChange={(event) => handleDateChange('latestEnd', event.target.value)}
                   />
                 </div>
               </div>
-              <div className="mt-4 space-y-1.5">
-                <Label>Ranking mode</Label>
-                <Select
-                  value={suggestionPreferences.rankingMode}
-                  onValueChange={(value) => handleRankingModeChange(value as RankingMode)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Pick a ranking mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RANKING_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {selectedRankingMode?.description ?? 'Pick how you want breaks to be sorted.'}
-                </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="minSpacingBetweenBreaks">Spacing between breaks (days)</Label>
+                  <Input
+                    id="minSpacingBetweenBreaks"
+                    type="number"
+                    min={0}
+                    value={suggestionPreferences.minSpacingBetweenBreaks}
+                    onChange={(event) =>
+                      handleNumericChange('minSpacingBetweenBreaks', event.target.value, 0)
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Reserve breathing room so you are not in PTO mode every other week.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/40 p-3">
+                  <p className="font-medium text-sm">Stretch around existing PTO</p>
+                  <Switch
+                    checked={suggestionPreferences.extendExistingPTO}
+                    onCheckedChange={handleToggleAnchors}
+                    aria-label="Extend existing PTO"
+                  />
+                </div>
               </div>
             </ConfigCard>
 
@@ -302,40 +367,6 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
               </div>
             </ConfigCard>
           </div>
-
-          <section className="rounded-3xl border border-border bg-card/40 p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="minSpacingBetweenBreaks">Spacing between breaks (days)</Label>
-                <Input
-                  id="minSpacingBetweenBreaks"
-                  type="number"
-                  min={0}
-                  value={suggestionPreferences.minSpacingBetweenBreaks}
-                  onChange={(event) =>
-                    handleNumericChange('minSpacingBetweenBreaks', event.target.value, 0)
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Reserve breathing room so you are not in PTO mode every other week.
-                </p>
-              </div>
-              <div className="flex items-start justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/40 p-3">
-                <div>
-                  <p className="font-medium text-sm">Stretch around existing PTO</p>
-                  <p className="text-xs text-muted-foreground">
-                    You currently have {selectedDays.length} PTO days selected. Treat them as anchors so
-                    the engine extends those plans.
-                  </p>
-                </div>
-                <Switch
-                  checked={suggestionPreferences.extendExistingPTO}
-                  onCheckedChange={handleToggleAnchors}
-                  aria-label="Extend existing PTO"
-                />
-              </div>
-            </div>
-          </section>
         </>
       )}
 
