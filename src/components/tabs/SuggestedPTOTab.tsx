@@ -310,14 +310,6 @@ const SuggestedPTOTab: React.FC = () => {
           Crunching weekends, holidays, and anchors…
         </div>
       )}
-
-      <section className="rounded-3xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">See plans on the calendar</p>
-        <p className="mt-1">
-          Suggested streaks now render directly on the calendar grid as connected lines with badges.
-          Hover the badge to view efficiency and click any day in the run to add it to your plan.
-        </p>
-      </section>
     </div>
   );
 };
