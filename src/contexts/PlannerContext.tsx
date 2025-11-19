@@ -529,6 +529,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   const suggestionPreferencesRef = useRef<SuggestionPreferences>(suggestionPreferences);
   const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState<boolean>(false);
   const [localWeekendVersion, setLocalWeekendVersion] = useState(0);
+  const [shouldUseLocalFallback, setShouldUseLocalFallback] = useState(false);
   const [countryCodeState, setCountryCodeState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEYS.COUNTRY);
@@ -566,11 +567,48 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   }, []);
 
   const getHolidays = useCallback((): CustomHoliday[] => {
-    if (plannerData?.holidays) {
+    if (plannerData?.holidays && plannerData.holidays.length > 0) {
       return plannerData.holidays;
     }
-    return localHolidays;
-  }, [plannerData, localHolidays]);
+
+    if (!isAuthenticated) {
+      return localHolidays;
+    }
+
+    if (shouldUseLocalFallback && localHolidays.length > 0) {
+      return localHolidays;
+    }
+
+    return plannerData?.holidays ?? [];
+  }, [plannerData, localHolidays, isAuthenticated, shouldUseLocalFallback]);
+
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined' || !plannerData?.user?.id) {
+      setShouldUseLocalFallback(false);
+      return;
+    }
+
+    const migrationKey = `pto_planner_migration_done_${plannerData.user.id}`;
+    const migrationDone = localStorage.getItem(migrationKey);
+
+    if (migrationDone) {
+      setShouldUseLocalFallback(false);
+      return;
+    }
+
+    const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
+    const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
+    const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
+    const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, []);
+
+    const hasLocalData =
+      storedDays.length > 0 ||
+      Object.keys(storedSettings).length > 0 ||
+      storedHolidays.length > 0 ||
+      storedWeekend.length > 0;
+
+    setShouldUseLocalFallback(hasLocalData);
+  }, [isAuthenticated, plannerData?.user?.id]);
 
   // Initialize from plannerData or localStorage
   useEffect(() => {
@@ -652,6 +690,10 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
           console.log('Successfully migrated local data:', result.data.details);
           // Mark migration as complete
           localStorage.setItem(migrationKey, 'true');
+          setShouldUseLocalFallback(false);
+          if (result.data.plannerData) {
+            setPlannerData(result.data.plannerData);
+          }
           // Optionally clear localStorage data after successful migration
           // (keeping it for now in case user wants to go back to local mode)
         } else if (!result.success) {
