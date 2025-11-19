@@ -243,58 +243,82 @@ export async function migrateLocalDataToDatabase(localData: {
           details.push('Migrated PTO settings');
           migratedSomething = true;
         }
+      } else {
+        details.push('Skipped PTO settings (already exist)');
       }
     }
 
     // 2. Migrate PTO Days
     if (localData.selectedDays && localData.selectedDays.length > 0) {
-      const ptoAmount = localData.settings?.pto_display_unit === 'hours'
-        ? (localData.settings.hours_per_day || 8)
-        : 1;
+      // Check if any PTO days already exist to prevent duplication
+      const { data: existingPtoDays } = await supabase
+        .from('pto_days')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
 
-      let migratedDays = 0;
-      for (const dateStr of localData.selectedDays) {
-        const { error: dayError } = await supabase.rpc('add_pto_day', {
-          p_user_id: user.id,
-          p_date: dateStr,
-          p_amount: ptoAmount,
-          p_status: 'planned',
-          p_description: 'Migrated from local storage',
-        });
+      if (!existingPtoDays || existingPtoDays.length === 0) {
+        const ptoAmount = localData.settings?.pto_display_unit === 'hours'
+          ? (localData.settings.hours_per_day || 8)
+          : 1;
 
-        if (!dayError) {
-          migratedDays++;
+        let migratedDays = 0;
+        for (const dateStr of localData.selectedDays) {
+          const { error: dayError } = await supabase.rpc('add_pto_day', {
+            p_user_id: user.id,
+            p_date: dateStr,
+            p_amount: ptoAmount,
+            p_status: 'planned',
+            p_description: 'Migrated from local storage',
+          });
+
+          if (!dayError) {
+            migratedDays++;
+          }
         }
-      }
 
-      if (migratedDays > 0) {
-        details.push(`Migrated ${migratedDays} PTO day${migratedDays === 1 ? '' : 's'}`);
-        migratedSomething = true;
+        if (migratedDays > 0) {
+          details.push(`Migrated ${migratedDays} PTO day${migratedDays === 1 ? '' : 's'}`);
+          migratedSomething = true;
+        }
+      } else {
+        details.push(`Skipped ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'} (PTO days already exist)`);
       }
     }
 
     // 3. Migrate Holidays
     if (localData.holidays && localData.holidays.length > 0) {
-      let migratedHolidays = 0;
-      for (const holiday of localData.holidays) {
-        const { error: holidayError } = await supabase
-          .from('custom_holidays')
-          .insert({
-            user_id: user.id,
-            name: holiday.name,
-            date: holiday.date,
-            repeats_yearly: holiday.repeats_yearly ?? true,
-            is_paid_holiday: holiday.is_paid_holiday ?? true,
-          });
+      // Check if any holidays already exist to prevent duplication
+      const { data: existingHolidays } = await supabase
+        .from('custom_holidays')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
 
-        if (!holidayError) {
-          migratedHolidays++;
+      if (!existingHolidays || existingHolidays.length === 0) {
+        let migratedHolidays = 0;
+        for (const holiday of localData.holidays) {
+          const { error: holidayError } = await supabase
+            .from('custom_holidays')
+            .insert({
+              user_id: user.id,
+              name: holiday.name,
+              date: holiday.date,
+              repeats_yearly: holiday.repeats_yearly ?? true,
+              is_paid_holiday: holiday.is_paid_holiday ?? true,
+            });
+
+          if (!holidayError) {
+            migratedHolidays++;
+          }
         }
-      }
 
-      if (migratedHolidays > 0) {
-        details.push(`Migrated ${migratedHolidays} holiday${migratedHolidays === 1 ? '' : 's'}`);
-        migratedSomething = true;
+        if (migratedHolidays > 0) {
+          details.push(`Migrated ${migratedHolidays} holiday${migratedHolidays === 1 ? '' : 's'}`);
+          migratedSomething = true;
+        }
+      } else {
+        details.push(`Skipped ${localData.holidays.length} holiday${localData.holidays.length === 1 ? '' : 's'} (holidays already exist)`);
       }
     }
 

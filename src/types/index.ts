@@ -164,6 +164,16 @@ export const UserSchema = z.object({
   full_name: z.string().min(1).max(200).optional(),
 });
 
+export const MagicLinkRequestSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Email is required')
+    .max(320, 'Email is too long')
+    .email('Enter a valid email address.')
+    .transform((value) => value.toLowerCase()),
+});
+
 // ============================================================================
 // Input Types (for forms/server actions)
 // ============================================================================
@@ -174,6 +184,7 @@ export type PTOAccrualRuleInput = z.infer<typeof PTOAccrualRuleSchema>;
 export type CustomHolidayInput = z.infer<typeof CustomHolidaySchema>;
 export type WeekendConfigInput = z.infer<typeof WeekendConfigSchema>;
 export type UserInput = z.infer<typeof UserSchema>;
+export type MagicLinkRequest = z.infer<typeof MagicLinkRequestSchema>;
 
 // ============================================================================
 // Component Props Types
@@ -270,3 +281,10 @@ export interface HolidayAPIResponse {
 export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+export interface MagicLinkResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  resendAvailableAt?: number;
+}

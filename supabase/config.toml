@@ -39,3 +39,10 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
 
+[auth.email.template.magic_link]
+subject = "Your secure PTO Planner sign-in link"
+content_path = "supabase/templates/auth/magic-link.html"
+
+[auth.email.template.magic_link_plain]
+subject = "Your secure PTO Planner sign-in link"
+content_path = "supabase/templates/auth/magic-link.txt"
