@@ -204,7 +204,7 @@ export async function migrateLocalDataToDatabase(localData: {
   }>;
   weekendDays?: number[];
   countryCode?: string;
-}): Promise<ActionResult<{ migrated: boolean; details: string[] }>> {
+}): Promise<ActionResult<{ migrated: boolean; details: string[]; plannerData?: PlannerData }>> {
   try {
     const supabase = await createClient();
 
@@ -319,6 +319,15 @@ export async function migrateLocalDataToDatabase(localData: {
       migratedSomething = true;
     }
 
+    let refreshedPlannerData: PlannerData | undefined;
+
+    if (migratedSomething) {
+      const refreshed = await getUserDashboardData();
+      if (refreshed.success && refreshed.data) {
+        refreshedPlannerData = refreshed.data;
+      }
+    }
+
     revalidatePath('/');
     revalidatePath('/dashboard');
 
@@ -327,6 +336,7 @@ export async function migrateLocalDataToDatabase(localData: {
       data: {
         migrated: migratedSomething,
         details,
+        plannerData: refreshedPlannerData,
       },
     };
   } catch (error) {
