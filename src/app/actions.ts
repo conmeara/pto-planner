@@ -2,9 +2,17 @@
 
 import { encodedRedirect, getURL } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { initializeUserAccount } from "@/app/actions/user-actions";
+import { cookies } from "next/headers";
+import {
+  MagicLinkRequestSchema,
+  type MagicLinkResponse,
+} from "@/types";
+import {
+  MAGIC_LINK_RATE_LIMIT_COOKIE,
+  MAGIC_LINK_RESEND_WINDOW_SECONDS,
+} from "@/lib/auth/constants";
 
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
@@ -66,28 +74,91 @@ export const signInAction = async (formData: FormData) => {
   return redirect("/dashboard");
 };
 
-export const signInWithMagicLinkAction = async (formData: FormData) => {
-  const email = formData.get("email")?.toString();
+const MAGIC_LINK_RESEND_WINDOW_MS = MAGIC_LINK_RESEND_WINDOW_SECONDS * 1000;
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
+const parseResendTimestamp = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const setMagicLinkRateLimitCookie = (
+  cookieStore: CookieStore,
+  resendAvailableAt: number,
+) => {
+  cookieStore.set(MAGIC_LINK_RATE_LIMIT_COOKIE, resendAvailableAt.toString(), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(resendAvailableAt),
+    maxAge: MAGIC_LINK_RESEND_WINDOW_SECONDS,
+  });
+};
+
+export const signInWithMagicLinkAction = async (
+  formData: FormData,
+): Promise<MagicLinkResponse> => {
+  const rawEmail = formData.get("email");
+  const parsedEmail = MagicLinkRequestSchema.safeParse({
+    email: typeof rawEmail === "string" ? rawEmail : "",
+  });
+
+  if (!parsedEmail.success) {
+    const errorMessage =
+      parsedEmail.error.issues[0]?.message || "Enter a valid email address.";
+    return { success: false, error: errorMessage };
+  }
+
+  const cookieStore = await cookies();
+  const now = Date.now();
+  const existingRateLimit = parseResendTimestamp(
+    cookieStore.get(MAGIC_LINK_RATE_LIMIT_COOKIE)?.value,
+  );
+
+  if (existingRateLimit && existingRateLimit > now) {
+    const secondsRemaining = Math.ceil(
+      (existingRateLimit - now) / 1000,
+    );
+    return {
+      success: false,
+      error: `Please wait ${secondsRemaining}s before requesting another magic link.`,
+      resendAvailableAt: existingRateLimit,
+    };
+  }
+
+  if (existingRateLimit && existingRateLimit <= now) {
+    cookieStore.delete(MAGIC_LINK_RATE_LIMIT_COOKIE);
+  }
+
   const supabase = await createClient();
   const origin = await getURL();
 
-  if (!email) {
-    return { success: false, error: "Email is required" };
-  }
-
   const { error } = await supabase.auth.signInWithOtp({
-    email,
+    email: parsedEmail.data.email,
     options: {
       emailRedirectTo: `${origin}auth/callback?redirect_to=/`,
+      shouldCreateUser: true,
     },
   });
 
   if (error) {
     console.error("Magic link error:", error.message);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: "Unable to send a magic link right now. Please try again shortly.",
+    };
   }
 
-  return { success: true, message: "Check your email for a magic link!" };
+  const resendAvailableAt = now + MAGIC_LINK_RESEND_WINDOW_MS;
+  setMagicLinkRateLimitCookie(cookieStore, resendAvailableAt);
+
+  return {
+    success: true,
+    message: "Check your email for a secure sign-in link.",
+    resendAvailableAt,
+  };
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -131,7 +202,7 @@ export const resetPasswordAction = async (formData: FormData) => {
   const confirmPassword = formData.get("confirmPassword") as string;
 
   if (!password || !confirmPassword) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Password and confirm password are required",
@@ -139,7 +210,7 @@ export const resetPasswordAction = async (formData: FormData) => {
   }
 
   if (password !== confirmPassword) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Passwords do not match",
@@ -151,18 +222,23 @@ export const resetPasswordAction = async (formData: FormData) => {
   });
 
   if (error) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Password update failed",
     );
   }
 
-  encodedRedirect("success", "/protected/reset-password", "Password updated");
+  return encodedRedirect("success", "/protected/reset-password", "Password updated");
 };
 
 export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
+
+  // Clean up rate limit cookie on sign out
+  const cookieStore = await cookies();
+  cookieStore.delete(MAGIC_LINK_RATE_LIMIT_COOKIE);
+
   return redirect("/sign-in");
 };

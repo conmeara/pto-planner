@@ -1,0 +1,6 @@
+Sign in to PTO Planner
+
+Use the secure link below to access your account:
+{{ .ActionURL }}
+
+This link expires in 5 minutes and can be used only once. If you didn’t request it, you can safely ignore this email.

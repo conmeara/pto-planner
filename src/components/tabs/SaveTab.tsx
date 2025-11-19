@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState, useTransition } from 'react';
 import {
   Coffee,
   Mail,
@@ -13,42 +13,137 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { signInWithMagicLinkAction, signOutAction } from '@/app/actions';
+import { MagicLinkRequestSchema } from '@/types';
+import {
+  MAGIC_LINK_STORAGE_KEY,
+  MAGIC_LINK_RESEND_WINDOW_SECONDS,
+} from '@/lib/auth/constants';
 
 const SaveTab: React.FC = () => {
   const { plannerData } = usePlanner();
   const [emailInput, setEmailInput] = useState('');
-  const [isSendingLink, setIsSendingLink] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [isSendingLink, startMagicLinkTransition] = useTransition();
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLoggedIn = !!plannerData?.user;
   const email = plannerData?.user?.email;
 
-  // Handle sign in with magic link
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSendingLink(true);
-    setError(null);
-
-    try {
-      const formData = new FormData();
-      formData.append('email', emailInput);
-
-      const result = await signInWithMagicLinkAction(formData);
-
-      if ('success' in result && result.success) {
-        setShowSuccess(true);
-        setEmailInput('');
-        setTimeout(() => setShowSuccess(false), 5000);
-      } else if ('error' in result) {
-        setError(result.error || 'An unknown error occurred');
-      }
-    } catch (err) {
-      setError('Failed to send magic link. Please try again.');
-      console.error('Sign in error:', err);
-    } finally {
-      setIsSendingLink(false);
+  const clearStoredCooldown = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(MAGIC_LINK_STORAGE_KEY);
     }
+  };
+
+  const persistResendTimestamp = (timestamp: number) => {
+    setResendAvailableAt(timestamp);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(MAGIC_LINK_STORAGE_KEY, timestamp.toString());
+    }
+  };
+
+  const displaySuccessMessage = (message: string) => {
+    setSuccessMessage(message);
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+    }
+    successTimeoutRef.current = setTimeout(() => {
+      setSuccessMessage(null);
+      successTimeoutRef.current = null;
+    }, 7000);
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const stored = localStorage.getItem(MAGIC_LINK_STORAGE_KEY);
+    if (!stored) {
+      return;
+    }
+
+    const parsed = Number.parseInt(stored, 10);
+    if (!Number.isNaN(parsed) && parsed > Date.now()) {
+      setResendAvailableAt(parsed);
+    } else {
+      clearStoredCooldown();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!resendAvailableAt) {
+      setCooldownSeconds(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remainingMs = resendAvailableAt - Date.now();
+      if (remainingMs <= 0) {
+        setCooldownSeconds(0);
+        setResendAvailableAt(null);
+        clearStoredCooldown();
+        return;
+      }
+      setCooldownSeconds(Math.ceil(remainingMs / 1000));
+    };
+
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(interval);
+  }, [resendAvailableAt]);
+
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Handle sign in with magic link
+  const handleSignIn = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (cooldownSeconds > 0) {
+      setError(`Please wait ${cooldownSeconds}s before requesting another magic link.`);
+      return;
+    }
+
+    const parsedForm = MagicLinkRequestSchema.safeParse({ email: emailInput });
+    if (!parsedForm.success) {
+      setError(parsedForm.error.issues[0]?.message ?? 'Enter a valid email address.');
+      return;
+    }
+
+    setError(null);
+    startMagicLinkTransition(() => {
+      const formData = new FormData();
+      formData.append('email', parsedForm.data.email);
+
+      signInWithMagicLinkAction(formData)
+        .then((result) => {
+          if (result.resendAvailableAt) {
+            persistResendTimestamp(result.resendAvailableAt);
+          }
+
+          if (result.success) {
+            displaySuccessMessage(result.message ?? 'Check your email for the magic link!');
+            setEmailInput('');
+          } else {
+            setSuccessMessage(null);
+            setError(result.error ?? 'Failed to send magic link. Please try again.');
+          }
+        })
+        .catch((err) => {
+          console.error('Sign in error:', err);
+          setSuccessMessage(null);
+          setError('Failed to send magic link. Please try again.');
+        });
+    });
   };
 
   // Handle sign out
@@ -64,41 +159,62 @@ const SaveTab: React.FC = () => {
     <div className="space-y-4">
       {!isLoggedIn ? (
         <div className="space-y-3 rounded-3xl bg-card px-4 py-4">
-          <form onSubmit={handleSignIn} className="flex gap-2">
-            <div className="relative flex-1">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="name@example.com"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                className="pl-9"
-                required
-              />
-            </div>
+          <form onSubmit={handleSignIn} className="space-y-3" noValidate>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="pl-9"
+                  autoComplete="email"
+                  aria-describedby="magic-link-helper"
+                  required
+                />
+              </div>
 
-            <Button type="submit" disabled={isSendingLink}>
-              {isSendingLink ? (
-                'Sending...'
-              ) : (
-                <>
-                  <MailCheck className="mr-2 h-4 w-4" />
-                  Send Magic Link
-                </>
-              )}
-            </Button>
+              <Button
+                type="submit"
+                disabled={isSendingLink || cooldownSeconds > 0}
+              >
+                {isSendingLink ? (
+                  'Sending...'
+                ) : cooldownSeconds > 0 ? (
+                  `Resend in ${cooldownSeconds}s`
+                ) : (
+                  <>
+                    <MailCheck className="mr-2 h-4 w-4" />
+                    Send Magic Link
+                  </>
+                )}
+              </Button>
+            </div>
+            <p id="magic-link-helper" className="text-xs text-muted-foreground">
+              We&apos;ll email you a secure sign-in link. For your safety, requests are limited to one every {MAGIC_LINK_RESEND_WINDOW_SECONDS} seconds.
+            </p>
           </form>
 
           {error && (
-            <div className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div
+              className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              role="alert"
+              aria-live="assertive"
+            >
               {error}
             </div>
           )}
 
-          {showSuccess && (
-            <div className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
-              Check your email for the magic link!
+          {successMessage && (
+            <div
+              className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary"
+              role="status"
+              aria-live="polite"
+            >
+              {successMessage}
             </div>
           )}
         </div>
