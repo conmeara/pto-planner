@@ -67,6 +67,10 @@ export async function addCustomHoliday(
  */
 export async function deleteCustomHoliday(holidayId: string): Promise<ActionResult> {
   try {
+    if (!holidayId || typeof holidayId !== 'string' || holidayId.trim() === '') {
+      return { success: false, error: 'Holiday ID is required' };
+    }
+
     const supabase = await createClient();
 
     // Get current user
@@ -78,7 +82,7 @@ export async function deleteCustomHoliday(holidayId: string): Promise<ActionResu
     const { error } = await supabase
       .from('custom_holidays')
       .delete()
-      .eq('id', holidayId)
+      .eq('id', holidayId.trim())
       .eq('user_id', user.id);
 
     if (error) {

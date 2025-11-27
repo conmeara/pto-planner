@@ -200,8 +200,14 @@ export async function batchAddPTODays(
       return { success: false, error: 'Unauthorized' };
     }
 
+    if (!days || days.length === 0) {
+      return { success: true, data: [] };
+    }
+
     // Add all days
     const results: PTODay[] = [];
+    const failures: string[] = [];
+
     for (const day of days) {
       const { data, error } = await supabase.rpc('add_pto_day', {
         p_user_id: user.id,
@@ -213,7 +219,7 @@ export async function batchAddPTODays(
 
       if (error) {
         console.error('Error adding PTO day:', error);
-        // Continue with other days even if one fails
+        failures.push(day.date);
         continue;
       }
 
@@ -224,6 +230,16 @@ export async function batchAddPTODays(
 
     // Revalidate the dashboard
     revalidatePath('/dashboard');
+
+    // Return failure if all items failed
+    if (failures.length > 0 && results.length === 0) {
+      return { success: false, error: `Failed to add all ${failures.length} PTO days` };
+    }
+
+    // Log partial failures for debugging (caller can compare input/output lengths)
+    if (failures.length > 0) {
+      console.warn(`Partial batch add: ${results.length} succeeded, ${failures.length} failed (dates: ${failures.join(', ')})`);
+    }
 
     return { success: true, data: results };
   } catch (error) {

@@ -191,8 +191,15 @@ function loadInitialSuggestionPreferences(): SuggestionPreferences {
       return fallback;
     }
 
-    const earliest = stored.earliestStart ? startOfDay(new Date(stored.earliestStart)) : fallback.earliestStart;
-    const latest = stored.latestEnd ? startOfDay(new Date(stored.latestEnd)) : fallback.latestEnd;
+    // Helper to safely parse dates from localStorage
+    const safeParseDate = (dateStr: string | undefined, defaultDate: Date): Date => {
+      if (!dateStr) return defaultDate;
+      const parsed = new Date(dateStr);
+      return !Number.isNaN(parsed.getTime()) ? startOfDay(parsed) : defaultDate;
+    };
+
+    const earliest = safeParseDate(stored.earliestStart, fallback.earliestStart);
+    const latest = safeParseDate(stored.latestEnd, fallback.latestEnd);
 
     const coerceNumber = (value: unknown, defaultValue: number): number => {
       return typeof value === 'number' && Number.isFinite(value) ? value : defaultValue;
@@ -233,9 +240,17 @@ function loadInitialSuggestionPreferences(): SuggestionPreferences {
 }
 
 function persistSuggestionPreferences(preferences: SuggestionPreferences) {
+  // Validate dates before persisting to avoid Invalid time value errors
+  const earliestStart = preferences.earliestStart instanceof Date && !Number.isNaN(preferences.earliestStart.getTime())
+    ? preferences.earliestStart.toISOString()
+    : new Date().toISOString();
+  const latestEnd = preferences.latestEnd instanceof Date && !Number.isNaN(preferences.latestEnd.getTime())
+    ? preferences.latestEnd.toISOString()
+    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
   const payload: StoredSuggestionPreferences = {
-    earliestStart: preferences.earliestStart.toISOString(),
-    latestEnd: preferences.latestEnd.toISOString(),
+    earliestStart,
+    latestEnd,
     minPTOToKeep: preferences.minPTOToKeep,
     maxConsecutiveDaysOff: preferences.maxConsecutiveDaysOff,
     minConsecutiveDaysOff: preferences.minConsecutiveDaysOff,
@@ -803,7 +818,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       pto_display_unit: 'days',
       hours_per_day: 8,
       hours_per_week: 40,
-      carry_over_limit: 5,
+      carry_over_limit: null,
     });
   }, [plannerData]);
 

@@ -231,14 +231,14 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
       )}
 
       <section className="rounded-3xl border border-border bg-card/50 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-shrink-0">
             <Label className="text-[11px] uppercase text-muted-foreground">Ranking mode</Label>
             <Select
               value={suggestionPreferences.rankingMode}
               onValueChange={(value) => handleRankingModeChange(value as RankingMode)}
             >
-              <SelectTrigger className="mt-1.5 h-9 w-[180px]">
+              <SelectTrigger className="mt-1.5 h-9 w-full sm:w-[180px]">
                 <SelectValue placeholder="Pick a ranking mode" />
               </SelectTrigger>
               <SelectContent>
@@ -250,12 +250,12 @@ const SuggestedPTOTab: React.FC<SuggestedPTOTabProps> = ({ onHeaderActionsChange
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <Metric label="Breaks planned" value={metrics.breakCount} />
             <Metric label="Longest break" value={`${metrics.longestStreak}d`} />
-            <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} />
-            <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} />
-            <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} />
+            <Metric label="Total days off" value={`${metrics.totalDaysOff}d`} className="hidden xs:block" />
+            <Metric label="PTO used" value={`${metrics.totalPTOUsed}d`} className="hidden sm:block" />
+            <Metric label="Avg efficiency" value={formatEfficiency(metrics.averageEfficiency)} className="hidden md:block" />
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
@@ -439,12 +439,13 @@ const NumberField: React.FC<NumberFieldProps> = ({ id, label, value, min, suffix
 interface MetricProps {
   label: string;
   value: string | number;
+  className?: string;
 }
 
-const Metric: React.FC<MetricProps> = ({ label, value }) => {
+const Metric: React.FC<MetricProps> = ({ label, value, className }) => {
   return (
-    <div>
-      <p className="text-[11px] uppercase text-muted-foreground">{label}</p>
+    <div className={className}>
+      <p className="text-[11px] uppercase text-muted-foreground whitespace-nowrap">{label}</p>
       <p className="text-sm font-semibold text-foreground">{value}</p>
     </div>
   );

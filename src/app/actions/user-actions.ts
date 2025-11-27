@@ -111,9 +111,30 @@ export async function getUserDashboardData(): Promise<ActionResult<PlannerData>>
       supabase.from('current_pto_balances').select('*').eq('user_id', authUser.id).single(),
     ]);
 
+    // User record is required - fail if not found
     if (userResult.error) {
       console.error('Error fetching user:', userResult.error);
       return { success: false, error: userResult.error.message };
+    }
+
+    // Log errors for other queries but continue (data may be empty for new users)
+    if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
+      console.error('Error fetching settings:', settingsResult.error);
+    }
+    if (ptoDaysResult.error) {
+      console.error('Error fetching PTO days:', ptoDaysResult.error);
+    }
+    if (holidaysResult.error) {
+      console.error('Error fetching holidays:', holidaysResult.error);
+    }
+    if (weekendConfigResult.error) {
+      console.error('Error fetching weekend config:', weekendConfigResult.error);
+    }
+    if (accrualRulesResult.error) {
+      console.error('Error fetching accrual rules:', accrualRulesResult.error);
+    }
+    if (balanceResult.error && balanceResult.error.code !== 'PGRST116') {
+      console.error('Error fetching balance:', balanceResult.error);
     }
 
     // Construct the data object (some fields can be null for new users)
@@ -232,7 +253,7 @@ export async function migrateLocalDataToDatabase(localData: {
             user_id: user.id,
             pto_start_date: localData.settings.pto_start_date || formatDateLocal(new Date()),
             initial_balance: localData.settings.initial_balance ?? 15,
-            carry_over_limit: localData.settings.carry_over_limit ?? 5,
+            carry_over_limit: localData.settings.carry_over_limit ?? null,
             pto_display_unit: localData.settings.pto_display_unit || 'days',
             hours_per_day: localData.settings.hours_per_day || 8,
             hours_per_week: localData.settings.hours_per_week || 40,
