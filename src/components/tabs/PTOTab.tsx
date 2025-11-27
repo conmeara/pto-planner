@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { usePlanner } from '@/contexts/PlannerContext';
 import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
-import { formatDateLocal } from '@/lib/date-utils';
+import { formatDateLocal, parseDateLocal } from '@/lib/date-utils';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
   { value: 'weekly', label: 'Weekly' },
@@ -66,7 +66,7 @@ const toDateInputValue = (date: Date): string => {
 
 const getDefaultResetDate = (asOfDate?: string): string => {
   if (asOfDate) {
-    const base = new Date(`${asOfDate}T00:00:00`);
+    const base = parseDateLocal(asOfDate);
     return toDateInputValue(new Date(base.getFullYear(), 11, 31));
   }
   const today = new Date();
@@ -422,9 +422,13 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
   }, [localSettings, isAuthenticated, plannerData, saveLocalSettings, setPlannerData, startTransition]);
 
   // Auto-save after settings change (debounced)
+  // Using a ref to avoid handleSave in deps (it changes on every render due to localSettings)
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      handleSave();
+      handleSaveRef.current();
     }, 500); // Auto-save 500ms after user stops typing
 
     return () => clearTimeout(timeoutId);
@@ -439,7 +443,6 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     localSettings.displayUnit,
     localSettings.hoursPerDay,
     localSettings.hoursPerWeek,
-    handleSave,
   ]);
 
   const accrualFrequencyLabel =
