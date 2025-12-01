@@ -25,13 +25,31 @@ const STORAGE_KEYS = {
 // LocalStorage Helper Functions
 // ============================================================================
 
-const saveToLocalStorage = (key: string, data: any) => {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-      console.error('Error saving to localStorage:', error);
+const saveToLocalStorage = (key: string, data: unknown): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    return true;
+  } catch (error) {
+    // Check specifically for quota exceeded error
+    const isQuotaError =
+      error instanceof DOMException &&
+      (error.name === 'QuotaExceededError' ||
+        error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        error.code === 22);
+
+    if (isQuotaError) {
+      console.error(
+        '[PlannerContext] localStorage quota exceeded. Data may not persist.',
+        { key, dataSize: JSON.stringify(data).length }
+      );
+    } else {
+      console.error('[PlannerContext] Error saving to localStorage:', error, { key });
     }
+    return false;
   }
 };
 
@@ -1420,7 +1438,11 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       }
     };
 
-    initializeHolidays();
+    initializeHolidays().catch((error) => {
+      // This should rarely happen since errors are handled internally,
+      // but we catch here to prevent unhandled promise rejections
+      console.error('[PlannerContext] Failed to initialize holidays:', error);
+    });
 
     return () => {
       cancelled = true;

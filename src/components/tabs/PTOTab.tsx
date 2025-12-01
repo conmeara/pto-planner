@@ -73,6 +73,15 @@ const getDefaultResetDate = (asOfDate?: string): string => {
   return toDateInputValue(new Date(today.getFullYear(), 11, 31));
 };
 
+// Rounds to avoid floating point precision issues (e.g., 2.9999999 -> 3)
+const roundForDisplay = (value: number, decimals: number = 4): number => {
+  if (!Number.isFinite(value)) return 0;
+  const factor = Math.pow(10, decimals);
+  const rounded = Math.round(value * factor) / factor;
+  // Handle cases like -0 or very small numbers that should be 0
+  return Math.abs(rounded) < 1e-10 ? 0 : rounded;
+};
+
 const convertBetweenUnits = (
   value: number,
   fromUnit: 'days' | 'hours',
@@ -82,15 +91,15 @@ const convertBetweenUnits = (
   if (!Number.isFinite(value)) return 0;
   const normalizedHours = hoursPerDay > 0 ? hoursPerDay : 8;
   if (fromUnit === toUnit) {
-    return value;
+    return roundForDisplay(value, 4);
   }
   if (fromUnit === 'days' && toUnit === 'hours') {
     const converted = value * normalizedHours;
-    return Math.round(converted * 1000) / 1000;
+    return roundForDisplay(converted, 4);
   }
   // from hours to days
   const converted = value / normalizedHours;
-  return Math.round(converted * 1000) / 1000;
+  return roundForDisplay(converted, 4);
 };
 
 interface LocalPTOSettings {
