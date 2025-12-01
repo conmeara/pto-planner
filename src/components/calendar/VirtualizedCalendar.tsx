@@ -181,6 +181,8 @@ const VirtualizedCalendar: React.FC = () => {
     new Set([anchorMonth.getFullYear()]),
   );
   const inFlightYearsRef = useRef<Set<number>>(new Set());
+  // Track the first visible month to preserve scroll position during resize
+  const firstVisibleMonthRef = useRef<Date | null>(null);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -199,27 +201,53 @@ const VirtualizedCalendar: React.FC = () => {
     [monthKeys, monthsPerRow],
   );
 
+  // Find the row index that contains a specific month
+  const getRowForMonth = useCallback(
+    (targetMonth: Date) => {
+      const monthIndex = differenceInCalendarMonths(targetMonth, minMonth);
+      const row = Math.floor(monthIndex / monthsPerRow);
+      return clamp(row, 0, rowCount - 1);
+    },
+    [minMonth, monthsPerRow, rowCount],
+  );
+
   // Track previous monthsPerRow to detect layout changes
   const prevMonthsPerRowRef = useRef(monthsPerRow);
+  const hasInitializedScrollRef = useRef(false);
 
   useEffect(() => {
     if (!isMounted) {
       return;
     }
 
-    // Only animate scroll on resize, use instant scroll on initial mount
     const layoutChanged = prevMonthsPerRowRef.current !== monthsPerRow;
     prevMonthsPerRowRef.current = monthsPerRow;
 
-    const id = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(todayRow, {
-        align: 'start',
-        behavior: layoutChanged ? 'smooth' : 'auto',
+    // On initial mount, scroll to today
+    if (!hasInitializedScrollRef.current) {
+      hasInitializedScrollRef.current = true;
+      const id = requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(todayRow, {
+          align: 'start',
+          behavior: 'auto',
+        });
       });
-    });
+      return () => cancelAnimationFrame(id);
+    }
 
-    return () => cancelAnimationFrame(id);
-  }, [isMounted, todayRow, virtualizer, monthsPerRow]);
+    // On layout change (resize), preserve the first visible month's position
+    if (layoutChanged && firstVisibleMonthRef.current) {
+      const targetRow = getRowForMonth(firstVisibleMonthRef.current);
+      console.log('[Resize] Preserving scroll to month:', format(firstVisibleMonthRef.current, 'yyyy-MM'), 'row:', targetRow);
+      const id = requestAnimationFrame(() => {
+        virtualizer.scrollToIndex(targetRow, {
+          align: 'start',
+          behavior: 'auto', // Use instant scroll to avoid jarring animation during resize
+        });
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [isMounted, todayRow, virtualizer, monthsPerRow, getRowForMonth]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const viewportStart = virtualizer.scrollOffset ?? 0;
@@ -283,6 +311,13 @@ const VirtualizedCalendar: React.FC = () => {
 
     return monthsForRow(firstVisibleRow);
   }, [visibleRowIndexes, monthsForRow, firstVisibleRow]);
+
+  // Track the first visible month for scroll preservation during resize
+  useEffect(() => {
+    if (visibleMonths.length > 0) {
+      firstVisibleMonthRef.current = visibleMonths[0];
+    }
+  }, [visibleMonths]);
 
   const canGoPrev = firstVisibleRow > 0;
   const canGoNext = lastVisibleRow < rowCount - 1;
