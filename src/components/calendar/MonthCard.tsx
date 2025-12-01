@@ -545,7 +545,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ month, onDayClick, className }) =
   ]);
 
   return (
-    <div className={cn('mb-6', className)}>
+    <div className={cn('mb-3 sm:mb-4 lg:mb-6', className)}>
       <div className="mb-3" title={monthTooltip}>
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-serif text-lg text-foreground">{MONTH_NAMES[monthIndex]}</h3>

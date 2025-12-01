@@ -29,9 +29,37 @@ import {
 import { Button } from '@/components/ui/button';
 import { getCalendarYearBounds } from '@/lib/calendar-range';
 
-const MONTHS_PER_ROW = 3;
-const ESTIMATED_ROW_HEIGHT = 520;
+// Breakpoints matching Tailwind: sm=640, md=768, lg=1024
+const TABLET_BREAKPOINT = 640;
+const DESKTOP_BREAKPOINT = 1024;
+
+const ESTIMATED_ROW_HEIGHT_MOBILE = 420;
+const ESTIMATED_ROW_HEIGHT_TABLET = 480;
+const ESTIMATED_ROW_HEIGHT_DESKTOP = 520;
 const OVERSCAN_ROWS = 4;
+
+function useResponsiveColumns() {
+  const [columns, setColumns] = useState(3); // Default to desktop
+
+  useEffect(() => {
+    const updateColumns = () => {
+      const width = window.innerWidth;
+      if (width < TABLET_BREAKPOINT) {
+        setColumns(1);
+      } else if (width < DESKTOP_BREAKPOINT) {
+        setColumns(2);
+      } else {
+        setColumns(3);
+      }
+    };
+
+    updateColumns();
+    window.addEventListener('resize', updateColumns);
+    return () => window.removeEventListener('resize', updateColumns);
+  }, []);
+
+  return columns;
+}
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -71,6 +99,13 @@ const VirtualizedCalendar: React.FC = () => {
     console.log('[VirtualizedCalendar] Initializing with date:', currentDate.toISOString(), 'Year:', currentDate.getFullYear());
     return currentDate;
   });
+
+  const monthsPerRow = useResponsiveColumns();
+  const estimatedRowHeight = monthsPerRow === 1
+    ? ESTIMATED_ROW_HEIGHT_MOBILE
+    : monthsPerRow === 2
+    ? ESTIMATED_ROW_HEIGHT_TABLET
+    : ESTIMATED_ROW_HEIGHT_DESKTOP;
 
   const calendarBounds = useMemo(() => getCalendarYearBounds(today), [today]);
   const { startYear, endYear } = calendarBounds;
@@ -119,8 +154,8 @@ const VirtualizedCalendar: React.FC = () => {
   );
 
   const rowCount = useMemo(
-    () => Math.max(1, Math.ceil(monthKeys.length / MONTHS_PER_ROW)),
-    [monthKeys.length],
+    () => Math.max(1, Math.ceil(monthKeys.length / monthsPerRow)),
+    [monthKeys.length, monthsPerRow],
   );
 
   const anchorIndex = useMemo(
@@ -134,11 +169,11 @@ const VirtualizedCalendar: React.FC = () => {
 
   const todayRow = useMemo(
     () => {
-      const row = clamp(Math.floor(anchorIndex / MONTHS_PER_ROW), 0, rowCount - 1);
-      console.log('[todayRow]', row, 'anchorIndex:', anchorIndex, 'rowCount:', rowCount);
+      const row = clamp(Math.floor(anchorIndex / monthsPerRow), 0, rowCount - 1);
+      console.log('[todayRow]', row, 'anchorIndex:', anchorIndex, 'rowCount:', rowCount, 'monthsPerRow:', monthsPerRow);
       return row;
     },
-    [anchorIndex, rowCount],
+    [anchorIndex, rowCount, monthsPerRow],
   );
 
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -150,34 +185,41 @@ const VirtualizedCalendar: React.FC = () => {
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollerRef.current,
-    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    estimateSize: () => estimatedRowHeight,
     overscan: OVERSCAN_ROWS,
   });
 
   const monthsForRow = useCallback(
     (rowIndex: number) => {
-      const startIndex = rowIndex * MONTHS_PER_ROW;
-      const slice = monthKeys.slice(startIndex, startIndex + MONTHS_PER_ROW);
+      const startIndex = rowIndex * monthsPerRow;
+      const slice = monthKeys.slice(startIndex, startIndex + monthsPerRow);
       console.log('[monthsForRow] Row', rowIndex, 'startIndex:', startIndex, 'months:', slice.map(m => `${m.getFullYear()}-${m.getMonth()+1}`));
       return slice.filter(Boolean) as Date[];
     },
-    [monthKeys],
+    [monthKeys, monthsPerRow],
   );
+
+  // Track previous monthsPerRow to detect layout changes
+  const prevMonthsPerRowRef = useRef(monthsPerRow);
 
   useEffect(() => {
     if (!isMounted) {
       return;
     }
 
+    // Only animate scroll on resize, use instant scroll on initial mount
+    const layoutChanged = prevMonthsPerRowRef.current !== monthsPerRow;
+    prevMonthsPerRowRef.current = monthsPerRow;
+
     const id = requestAnimationFrame(() => {
       virtualizer.scrollToIndex(todayRow, {
         align: 'start',
-        behavior: 'auto',
+        behavior: layoutChanged ? 'smooth' : 'auto',
       });
     });
 
     return () => cancelAnimationFrame(id);
-  }, [isMounted, todayRow, virtualizer]);
+  }, [isMounted, todayRow, virtualizer, monthsPerRow]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const viewportStart = virtualizer.scrollOffset ?? 0;
@@ -217,7 +259,7 @@ const VirtualizedCalendar: React.FC = () => {
   const visibleRowCount = Math.max(visibleRowIndexes.length, 1);
   const fallbackPageSize = Math.max(
     1,
-    Math.round((viewportHeight || ESTIMATED_ROW_HEIGHT) / ESTIMATED_ROW_HEIGHT),
+    Math.round((viewportHeight || estimatedRowHeight) / estimatedRowHeight),
   );
   const pageSize = visibleRowIndexes.length ? visibleRowCount : fallbackPageSize;
 
@@ -500,7 +542,7 @@ const VirtualizedCalendar: React.FC = () => {
         <div
           ref={scrollerRef}
           className={cn(
-            'relative h-[78vh] overflow-y-auto px-6 py-6',
+            'relative h-[78vh] overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6',
             isPending ? 'opacity-95' : 'opacity-100',
           )}
           style={{ scrollbarGutter: 'stable' }}
@@ -521,7 +563,7 @@ const VirtualizedCalendar: React.FC = () => {
                     top: 0,
                   }}
                 >
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-6">
                     {months.map((month) => (
                       <MonthCard key={format(month, 'yyyy-MM')} month={month} onDayClick={handleDayClick} />
                     ))}
