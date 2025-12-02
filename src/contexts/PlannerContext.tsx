@@ -5,8 +5,9 @@ import type { PlannerData, PTODay, CustomHoliday, PTOSettings, WeekendConfig, Ac
 import { optimizePTO, type PTOOptimizerConfig } from '@/lib/pto-optimizer';
 import { formatDateLocal, parseDateLocal, isSameDay, matchesHoliday } from '@/lib/date-utils';
 import { addCustomHoliday, batchAddHolidays, clearHolidaysForYear, deleteCustomHoliday } from '@/app/actions/holiday-actions';
-import { migrateLocalDataToDatabase } from '@/app/actions/user-actions';
+import { migrateLocalDataToDatabase, replaceWithLocalData, mergeLocalData } from '@/app/actions/user-actions';
 import { getCalendarYearBounds } from '@/lib/calendar-range';
+import type { ConflictResolution, ConflictData } from '@/components/DataConflictModal';
 
 // ============================================================================
 // LocalStorage Keys
@@ -65,6 +66,27 @@ const loadFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
     }
   }
   return defaultValue;
+};
+
+/**
+ * Clear all PTO planner data from localStorage
+ * Called after successful migration to prevent conflicts with future sign-ins
+ */
+const clearLocalStorageData = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(STORAGE_KEYS.SELECTED_DAYS);
+    localStorage.removeItem(STORAGE_KEYS.SETTINGS);
+    localStorage.removeItem(STORAGE_KEYS.WEEKEND_CONFIG);
+    localStorage.removeItem(STORAGE_KEYS.HOLIDAYS);
+    // Note: Keep COUNTRY and SUGGESTION_PREFS as they're user preferences, not data
+    // Also keep ACCRUAL_RULES for now
+  } catch (error) {
+    console.error('Error clearing localStorage:', error);
+  }
 };
 
 const hasHolidaysForYear = (holidays: CustomHoliday[], year: number): boolean => {
@@ -535,6 +557,11 @@ interface PlannerContextType {
     repeatsYearly?: boolean;
     isPaidHoliday?: boolean;
   }) => Promise<ActionResult<CustomHoliday[]>>;
+
+  // Conflict resolution
+  showConflictModal: boolean;
+  conflictData: ConflictData | null;
+  resolveConflict: (resolution: ConflictResolution) => Promise<void>;
 }
 
 // ============================================================================
@@ -582,6 +609,16 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, [])
   );
   const [isLoadingHolidays, setIsLoadingHolidays] = useState<boolean>(false);
+
+  // Conflict resolution state
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictData, setConflictData] = useState<ConflictData | null>(null);
+  const pendingLocalDataRef = useRef<{
+    selectedDays: string[];
+    settings: Partial<PTOSettings>;
+    holidays: CustomHoliday[];
+    weekendDays: number[];
+  } | null>(null);
 
   const isAuthenticated = !!plannerData?.user;
   const countryCode = countryCodeState;
@@ -635,6 +672,18 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       return;
     }
 
+    // Check if user already has data in the database (returning user)
+    // If so, don't use local fallback - their synced data is authoritative
+    const userHasExistingData =
+      (plannerData.ptoDays && plannerData.ptoDays.length > 0) ||
+      (plannerData.holidays && plannerData.holidays.length > 0);
+
+    if (userHasExistingData) {
+      setShouldUseLocalFallback(false);
+      return;
+    }
+
+    // Only use local fallback for new users who have localStorage data
     const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
     const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
     const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
@@ -647,23 +696,40 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       storedWeekend.length > 0;
 
     setShouldUseLocalFallback(hasLocalData);
-  }, [isAuthenticated, plannerData?.user?.id]);
+  }, [isAuthenticated, plannerData?.user?.id, plannerData?.ptoDays, plannerData?.holidays]);
 
   // Initialize from plannerData or localStorage
   useEffect(() => {
-    if (plannerData?.ptoDays) {
-      // Load from database (authenticated user)
+    // For authenticated users with actual PTO days in the database
+    if (plannerData?.ptoDays && plannerData.ptoDays.length > 0) {
       const dates = plannerData.ptoDays
         .filter((day) => day.status === 'planned')
         .map((day) => parseDateLocal(day.date));
       setSelectedDays(dates);
-    } else {
-      // Load from localStorage (unauthenticated user)
+      return;
+    }
+
+    // For authenticated users during migration - use localStorage as fallback
+    if (isAuthenticated && shouldUseLocalFallback) {
+      const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
+      if (storedDays.length > 0) {
+        const dates = storedDays.map((dateStr) => parseDateLocal(dateStr));
+        setSelectedDays(dates);
+        return;
+      }
+    }
+
+    // For unauthenticated users - load from localStorage
+    if (!isAuthenticated) {
       const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
       const dates = storedDays.map((dateStr) => parseDateLocal(dateStr));
       setSelectedDays(dates);
+      return;
     }
-  }, [plannerData]);
+
+    // Authenticated user with no PTO days and no local fallback - start empty
+    setSelectedDays([]);
+  }, [plannerData, isAuthenticated, shouldUseLocalFallback]);
 
   // Persist suggestion preferences
   useEffect(() => {
@@ -673,12 +739,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
   // Migrate localStorage data to database when user first signs in
   useEffect(() => {
-    if (!isAuthenticated || typeof window === 'undefined') {
+    if (!isAuthenticated || typeof window === 'undefined' || !plannerData?.user?.id) {
       return;
     }
 
     // Check if migration has already been done for this user
-    const migrationKey = `pto_planner_migration_done_${plannerData?.user?.id}`;
+    const migrationKey = `pto_planner_migration_done_${plannerData.user.id}`;
     const migrationDone = localStorage.getItem(migrationKey);
 
     if (migrationDone) {
@@ -703,7 +769,38 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       return;
     }
 
-    // Perform migration
+    // Check if user already has data in the database (returning user)
+    const userHasExistingPtoDays = plannerData.ptoDays && plannerData.ptoDays.length > 0;
+    const userHasExistingHolidays = plannerData.holidays && plannerData.holidays.length > 0;
+    const userHasExistingData = userHasExistingPtoDays || userHasExistingHolidays;
+
+    if (userHasExistingData) {
+      // User has existing account data AND local data - show conflict resolution modal
+      console.log('Conflict detected: user has both local and synced data');
+
+      // Store the local data for later use
+      pendingLocalDataRef.current = {
+        selectedDays: storedDays,
+        settings: storedSettings,
+        holidays: storedHolidays,
+        weekendDays: storedWeekend,
+      };
+
+      // Set conflict data for the modal
+      setConflictData({
+        localPtoDays: storedDays.length,
+        syncedPtoDays: plannerData.ptoDays?.length || 0,
+        localHolidays: storedHolidays.length,
+        syncedHolidays: plannerData.holidays?.length || 0,
+        hasLocalSettings: Object.keys(storedSettings).length > 0,
+      });
+
+      // Show the modal
+      setShowConflictModal(true);
+      return;
+    }
+
+    // Perform migration for new users only
     const performMigration = async () => {
       try {
         const result = await migrateLocalDataToDatabase({
@@ -727,16 +824,22 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
         if (result.success && result.data?.migrated) {
           console.log('Successfully migrated local data:', result.data.details);
+          // Clear localStorage after successful migration to prevent future conflicts
+          clearLocalStorageData();
           // Mark migration as complete
           localStorage.setItem(migrationKey, 'true');
           setShouldUseLocalFallback(false);
           if (result.data.plannerData) {
             setPlannerData(result.data.plannerData);
           }
-          // Optionally clear localStorage data after successful migration
-          // (keeping it for now in case user wants to go back to local mode)
+        } else if (result.success && !result.data?.migrated) {
+          // Migration ran but nothing was migrated (data already exists)
+          clearLocalStorageData();
+          localStorage.setItem(migrationKey, 'true');
+          setShouldUseLocalFallback(false);
         } else if (!result.success) {
           console.error('Failed to migrate local data:', result.error);
+          // Don't clear localStorage on failure - user can retry
         }
       } catch (error) {
         console.error('Error during data migration:', error);
@@ -744,7 +847,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     };
 
     performMigration();
-  }, [isAuthenticated, plannerData?.user?.id]);
+  }, [isAuthenticated, plannerData?.user?.id, plannerData?.ptoDays, plannerData?.holidays]);
 
   // Save selected days to localStorage when not authenticated
   useEffect(() => {
@@ -789,7 +892,15 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     (date: Date): boolean => {
       const dayOfWeek = date.getDay();
 
-      if (plannerData?.weekendConfig) {
+      // During migration, prefer localStorage weekend config
+      if (shouldUseLocalFallback) {
+        const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, []);
+        if (storedWeekend.length > 0) {
+          return storedWeekend.includes(dayOfWeek);
+        }
+      }
+
+      if (plannerData?.weekendConfig && plannerData.weekendConfig.length > 0) {
         // Use database config for authenticated users
         return plannerData.weekendConfig.some(
           (config) => config.day_of_week === dayOfWeek && config.is_weekend
@@ -800,23 +911,39 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, [0, 6]);
       return storedWeekend.includes(dayOfWeek);
     },
-    [plannerData]
+    [plannerData, shouldUseLocalFallback]
   );
 
   // Helper: Get weekend days as array
   const getWeekendDays = useCallback((): number[] => {
-    if (plannerData?.weekendConfig) {
+    // During migration, prefer localStorage weekend config
+    if (shouldUseLocalFallback) {
+      const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, []);
+      if (storedWeekend.length > 0) {
+        return storedWeekend;
+      }
+    }
+
+    if (plannerData?.weekendConfig && plannerData.weekendConfig.length > 0) {
       return plannerData.weekendConfig
         .filter((config) => config.is_weekend)
         .map((config) => config.day_of_week);
     }
 
-    // Fallback to localStorage
+    // Fallback to localStorage for unauthenticated users
     return loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, [0, 6]);
-  }, [plannerData]);
+  }, [plannerData, shouldUseLocalFallback]);
 
   // Helper: Get current PTO balance
   const getCurrentBalance = useCallback((): number => {
+    // During migration, prefer localStorage balance
+    if (shouldUseLocalFallback) {
+      const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
+      if (storedSettings.initial_balance !== undefined) {
+        return storedSettings.initial_balance;
+      }
+    }
+
     if (plannerData?.currentBalance) {
       return plannerData.currentBalance.current_balance;
     }
@@ -825,26 +952,48 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       return plannerData.settings.initial_balance;
     }
 
-    // Fallback to localStorage
+    // Fallback to localStorage for unauthenticated users
     const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
     return storedSettings.initial_balance || 0;
-  }, [plannerData]);
+  }, [plannerData, shouldUseLocalFallback]);
 
   // Helper: Get settings (from DB or localStorage)
   const getSettings = useCallback((): Partial<PTOSettings> => {
-    if (plannerData?.settings) {
-      return plannerData.settings;
-    }
-
-    // Fallback to localStorage
-    return loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {
+    const defaultSettings: Partial<PTOSettings> = {
       initial_balance: 15,
       pto_display_unit: 'days',
       hours_per_day: 8,
       hours_per_week: 40,
       carry_over_limit: null,
-    });
-  }, [plannerData]);
+    };
+
+    // For unauthenticated users, always use localStorage
+    if (!isAuthenticated) {
+      return loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, defaultSettings);
+    }
+
+    // During migration, merge localStorage settings with database settings
+    // This ensures user sees their local settings while migration completes
+    if (shouldUseLocalFallback) {
+      const localSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
+      if (Object.keys(localSettings).length > 0) {
+        // Merge: local settings take priority over database defaults
+        return {
+          ...defaultSettings,
+          ...plannerData?.settings,
+          ...localSettings,
+        };
+      }
+    }
+
+    // Authenticated user with database settings
+    if (plannerData?.settings) {
+      return plannerData.settings;
+    }
+
+    // Fallback to defaults
+    return defaultSettings;
+  }, [plannerData, isAuthenticated, shouldUseLocalFallback]);
 
   // Helper: Get accrual rules (from DB or localStorage)
   const getAccrualRules = useCallback((): PTOAccrualRule[] => {
@@ -1493,6 +1642,92 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     [isDateSelected]
   );
 
+  // Action: Resolve data conflict
+  const resolveConflict = useCallback(async (resolution: ConflictResolution) => {
+    if (!plannerData?.user?.id || !pendingLocalDataRef.current) {
+      console.error('Cannot resolve conflict: missing user or local data');
+      return;
+    }
+
+    const migrationKey = `pto_planner_migration_done_${plannerData.user.id}`;
+    const localData = pendingLocalDataRef.current;
+
+    try {
+      if (resolution === 'keep-synced') {
+        // User chose to keep synced data - just clear localStorage
+        clearLocalStorageData();
+        localStorage.setItem(migrationKey, 'true');
+        setShouldUseLocalFallback(false);
+        console.log('Conflict resolved: keeping synced data');
+      } else if (resolution === 'use-local') {
+        // User chose to replace with local data
+        const result = await replaceWithLocalData({
+          selectedDays: localData.selectedDays,
+          settings: {
+            initial_balance: localData.settings.initial_balance,
+            pto_start_date: localData.settings.pto_start_date,
+            carry_over_limit: localData.settings.carry_over_limit ?? undefined,
+            pto_display_unit: localData.settings.pto_display_unit,
+            hours_per_day: localData.settings.hours_per_day,
+            hours_per_week: localData.settings.hours_per_week,
+          },
+          holidays: localData.holidays.map(h => ({
+            name: h.name,
+            date: h.date,
+            repeats_yearly: h.repeats_yearly,
+            is_paid_holiday: h.is_paid_holiday,
+          })),
+          weekendDays: localData.weekendDays,
+        });
+
+        if (result.success && result.data?.plannerData) {
+          setPlannerData(result.data.plannerData);
+          clearLocalStorageData();
+          localStorage.setItem(migrationKey, 'true');
+          setShouldUseLocalFallback(false);
+          console.log('Conflict resolved: replaced with local data');
+        } else if (!result.success) {
+          console.error('Failed to replace with local data:', result.error);
+        }
+      } else if (resolution === 'merge') {
+        // User chose to merge both datasets
+        const result = await mergeLocalData({
+          selectedDays: localData.selectedDays,
+          settings: {
+            initial_balance: localData.settings.initial_balance,
+            pto_start_date: localData.settings.pto_start_date,
+            carry_over_limit: localData.settings.carry_over_limit ?? undefined,
+            pto_display_unit: localData.settings.pto_display_unit,
+            hours_per_day: localData.settings.hours_per_day,
+            hours_per_week: localData.settings.hours_per_week,
+          },
+          holidays: localData.holidays.map(h => ({
+            name: h.name,
+            date: h.date,
+            repeats_yearly: h.repeats_yearly,
+            is_paid_holiday: h.is_paid_holiday,
+          })),
+          weekendDays: localData.weekendDays,
+        });
+
+        if (result.success && result.data?.plannerData) {
+          setPlannerData(result.data.plannerData);
+          clearLocalStorageData();
+          localStorage.setItem(migrationKey, 'true');
+          setShouldUseLocalFallback(false);
+          console.log('Conflict resolved: merged data', result.data.mergedCounts);
+        } else if (!result.success) {
+          console.error('Failed to merge data:', result.error);
+        }
+      }
+    } finally {
+      // Clean up
+      pendingLocalDataRef.current = null;
+      setConflictData(null);
+      setShowConflictModal(false);
+    }
+  }, [plannerData?.user?.id]);
+
   // Action: Clear all suggestions
   const clearSuggestions = useCallback(() => {
     setSuggestedDays([]);
@@ -1632,6 +1867,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     refreshHolidays,
     removeHoliday,
     addHoliday,
+    showConflictModal,
+    conflictData,
+    resolveConflict,
   };
 
   return <PlannerContext.Provider value={value}>{children}</PlannerContext.Provider>;

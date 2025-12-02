@@ -239,33 +239,51 @@ export async function migrateLocalDataToDatabase(localData: {
     let migratedSomething = false;
 
     // 1. Migrate PTO Settings
-    if (localData.settings) {
-      const { data: existingSettings } = await supabase
-        .from('pto_settings')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+    // Check if there are meaningful local settings to migrate (not just empty defaults)
+    const hasLocalSettings = localData.settings && (
+      localData.settings.initial_balance !== undefined ||
+      localData.settings.pto_start_date !== undefined ||
+      localData.settings.carry_over_limit !== undefined ||
+      localData.settings.pto_display_unit !== undefined ||
+      localData.settings.hours_per_day !== undefined ||
+      localData.settings.hours_per_week !== undefined
+    );
 
-      if (!existingSettings) {
+    if (hasLocalSettings) {
+      // Build update object with only the fields that have local values
+      const settingsUpdate: Record<string, unknown> = {};
+
+      if (localData.settings!.initial_balance !== undefined) {
+        settingsUpdate.initial_balance = localData.settings!.initial_balance;
+      }
+      if (localData.settings!.pto_start_date !== undefined) {
+        settingsUpdate.pto_start_date = localData.settings!.pto_start_date;
+      }
+      if (localData.settings!.carry_over_limit !== undefined) {
+        settingsUpdate.carry_over_limit = localData.settings!.carry_over_limit;
+      }
+      if (localData.settings!.pto_display_unit !== undefined) {
+        settingsUpdate.pto_display_unit = localData.settings!.pto_display_unit;
+      }
+      if (localData.settings!.hours_per_day !== undefined) {
+        settingsUpdate.hours_per_day = localData.settings!.hours_per_day;
+      }
+      if (localData.settings!.hours_per_week !== undefined) {
+        settingsUpdate.hours_per_week = localData.settings!.hours_per_week;
+      }
+
+      if (Object.keys(settingsUpdate).length > 0) {
         const { error: settingsError } = await supabase
           .from('pto_settings')
-          .upsert({
-            user_id: user.id,
-            pto_start_date: localData.settings.pto_start_date || formatDateLocal(new Date()),
-            initial_balance: localData.settings.initial_balance ?? 15,
-            carry_over_limit: localData.settings.carry_over_limit ?? null,
-            pto_display_unit: localData.settings.pto_display_unit || 'days',
-            hours_per_day: localData.settings.hours_per_day || 8,
-            hours_per_week: localData.settings.hours_per_week || 40,
-            allow_negative_balance: false,
-          });
+          .update(settingsUpdate)
+          .eq('user_id', user.id);
 
         if (!settingsError) {
           details.push('Migrated PTO settings');
           migratedSomething = true;
+        } else {
+          console.error('Error migrating settings:', settingsError);
         }
-      } else {
-        details.push('Skipped PTO settings (already exist)');
       }
     }
 
@@ -390,5 +408,330 @@ export async function migrateLocalDataToDatabase(localData: {
       return { success: false, error: error.message };
     }
     return { success: false, error: 'Failed to migrate local data' };
+  }
+}
+
+/**
+ * Replace all user data with local data
+ * Used when user chooses "use local" during conflict resolution
+ */
+export async function replaceWithLocalData(localData: {
+  selectedDays: string[];
+  settings?: {
+    initial_balance?: number;
+    pto_start_date?: string;
+    carry_over_limit?: number;
+    pto_display_unit?: 'days' | 'hours';
+    hours_per_day?: number;
+    hours_per_week?: number;
+  };
+  holidays?: Array<{
+    name: string;
+    date: string;
+    repeats_yearly?: boolean;
+    is_paid_holiday?: boolean;
+  }>;
+  weekendDays?: number[];
+}): Promise<ActionResult<{ plannerData: PlannerData }>> {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    // 1. Delete all existing PTO days
+    const { error: deletePtoError } = await supabase
+      .from('pto_days')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (deletePtoError) {
+      console.error('Error deleting PTO days:', deletePtoError);
+    }
+
+    // 2. Delete all existing holidays (keep only non-user holidays if any)
+    const { error: deleteHolidaysError } = await supabase
+      .from('custom_holidays')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (deleteHolidaysError) {
+      console.error('Error deleting holidays:', deleteHolidaysError);
+    }
+
+    // 3. Insert local PTO days
+    if (localData.selectedDays && localData.selectedDays.length > 0) {
+      const ptoAmount = localData.settings?.pto_display_unit === 'hours'
+        ? (localData.settings.hours_per_day || 8)
+        : 1;
+
+      for (const dateStr of localData.selectedDays) {
+        await supabase.rpc('add_pto_day', {
+          p_user_id: user.id,
+          p_date: dateStr,
+          p_amount: ptoAmount,
+          p_status: 'planned',
+          p_description: 'Imported from local storage',
+        });
+      }
+    }
+
+    // 4. Insert local holidays
+    if (localData.holidays && localData.holidays.length > 0) {
+      for (const holiday of localData.holidays) {
+        await supabase
+          .from('custom_holidays')
+          .insert({
+            user_id: user.id,
+            name: holiday.name,
+            date: holiday.date,
+            repeats_yearly: holiday.repeats_yearly ?? true,
+            is_paid_holiday: holiday.is_paid_holiday ?? true,
+          });
+      }
+    }
+
+    // 5. Update settings if provided
+    if (localData.settings && Object.keys(localData.settings).length > 0) {
+      const settingsUpdate: Record<string, unknown> = {};
+      if (localData.settings.initial_balance !== undefined) {
+        settingsUpdate.initial_balance = localData.settings.initial_balance;
+      }
+      if (localData.settings.pto_start_date !== undefined) {
+        settingsUpdate.pto_start_date = localData.settings.pto_start_date;
+      }
+      if (localData.settings.carry_over_limit !== undefined) {
+        settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
+      }
+      if (localData.settings.pto_display_unit !== undefined) {
+        settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
+      }
+      if (localData.settings.hours_per_day !== undefined) {
+        settingsUpdate.hours_per_day = localData.settings.hours_per_day;
+      }
+      if (localData.settings.hours_per_week !== undefined) {
+        settingsUpdate.hours_per_week = localData.settings.hours_per_week;
+      }
+
+      if (Object.keys(settingsUpdate).length > 0) {
+        await supabase
+          .from('pto_settings')
+          .update(settingsUpdate)
+          .eq('user_id', user.id);
+      }
+    }
+
+    // 6. Update weekend config if provided
+    if (localData.weekendDays && localData.weekendDays.length > 0) {
+      // Reset all to non-weekend first
+      await supabase
+        .from('weekend_config')
+        .update({ is_weekend: false })
+        .eq('user_id', user.id);
+
+      // Set the local weekend days
+      for (const dayOfWeek of localData.weekendDays) {
+        await supabase
+          .from('weekend_config')
+          .upsert({
+            user_id: user.id,
+            day_of_week: dayOfWeek,
+            is_weekend: true,
+          }, {
+            onConflict: 'user_id,day_of_week',
+          });
+      }
+    }
+
+    revalidatePath('/');
+    revalidatePath('/dashboard');
+
+    const refreshed = await getUserDashboardData();
+    if (!refreshed.success || !refreshed.data) {
+      return { success: false, error: 'Failed to refresh data after replacement' };
+    }
+
+    return { success: true, data: { plannerData: refreshed.data } };
+  } catch (error) {
+    console.error('Error in replaceWithLocalData:', error);
+    if (error instanceof Error) {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: 'Failed to replace data' };
+  }
+}
+
+/**
+ * Merge local data with existing database data
+ * Used when user chooses "merge" during conflict resolution
+ * - PTO days: Add local days that don't already exist in DB
+ * - Settings: Local settings override DB settings
+ * - Holidays: Add local holidays that don't already exist (by date+name)
+ */
+export async function mergeLocalData(localData: {
+  selectedDays: string[];
+  settings?: {
+    initial_balance?: number;
+    pto_start_date?: string;
+    carry_over_limit?: number;
+    pto_display_unit?: 'days' | 'hours';
+    hours_per_day?: number;
+    hours_per_week?: number;
+  };
+  holidays?: Array<{
+    name: string;
+    date: string;
+    repeats_yearly?: boolean;
+    is_paid_holiday?: boolean;
+  }>;
+  weekendDays?: number[];
+}): Promise<ActionResult<{ plannerData: PlannerData; mergedCounts: { ptoDays: number; holidays: number } }>> {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    let mergedPtoDays = 0;
+    let mergedHolidays = 0;
+
+    // 1. Merge PTO days (add only non-duplicate dates)
+    if (localData.selectedDays && localData.selectedDays.length > 0) {
+      // Get existing PTO days
+      const { data: existingPtoDays } = await supabase
+        .from('pto_days')
+        .select('date')
+        .eq('user_id', user.id);
+
+      const existingDates = new Set(existingPtoDays?.map(d => d.date) || []);
+
+      const ptoAmount = localData.settings?.pto_display_unit === 'hours'
+        ? (localData.settings.hours_per_day || 8)
+        : 1;
+
+      for (const dateStr of localData.selectedDays) {
+        if (!existingDates.has(dateStr)) {
+          const { error } = await supabase.rpc('add_pto_day', {
+            p_user_id: user.id,
+            p_date: dateStr,
+            p_amount: ptoAmount,
+            p_status: 'planned',
+            p_description: 'Merged from local storage',
+          });
+          if (!error) {
+            mergedPtoDays++;
+          }
+        }
+      }
+    }
+
+    // 2. Merge holidays (add only non-duplicate date+name combinations)
+    if (localData.holidays && localData.holidays.length > 0) {
+      // Get existing holidays
+      const { data: existingHolidays } = await supabase
+        .from('custom_holidays')
+        .select('date, name')
+        .eq('user_id', user.id);
+
+      const existingKeys = new Set(
+        existingHolidays?.map(h => `${h.date}__${h.name}`) || []
+      );
+
+      for (const holiday of localData.holidays) {
+        const key = `${holiday.date}__${holiday.name}`;
+        if (!existingKeys.has(key)) {
+          const { error } = await supabase
+            .from('custom_holidays')
+            .insert({
+              user_id: user.id,
+              name: holiday.name,
+              date: holiday.date,
+              repeats_yearly: holiday.repeats_yearly ?? true,
+              is_paid_holiday: holiday.is_paid_holiday ?? true,
+            });
+          if (!error) {
+            mergedHolidays++;
+          }
+        }
+      }
+    }
+
+    // 3. Update settings (local settings override)
+    if (localData.settings && Object.keys(localData.settings).length > 0) {
+      const settingsUpdate: Record<string, unknown> = {};
+      if (localData.settings.initial_balance !== undefined) {
+        settingsUpdate.initial_balance = localData.settings.initial_balance;
+      }
+      if (localData.settings.pto_start_date !== undefined) {
+        settingsUpdate.pto_start_date = localData.settings.pto_start_date;
+      }
+      if (localData.settings.carry_over_limit !== undefined) {
+        settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
+      }
+      if (localData.settings.pto_display_unit !== undefined) {
+        settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
+      }
+      if (localData.settings.hours_per_day !== undefined) {
+        settingsUpdate.hours_per_day = localData.settings.hours_per_day;
+      }
+      if (localData.settings.hours_per_week !== undefined) {
+        settingsUpdate.hours_per_week = localData.settings.hours_per_week;
+      }
+
+      if (Object.keys(settingsUpdate).length > 0) {
+        await supabase
+          .from('pto_settings')
+          .update(settingsUpdate)
+          .eq('user_id', user.id);
+      }
+    }
+
+    // 4. Merge weekend config (local overrides)
+    if (localData.weekendDays && localData.weekendDays.length > 0) {
+      // Reset all to non-weekend first
+      await supabase
+        .from('weekend_config')
+        .update({ is_weekend: false })
+        .eq('user_id', user.id);
+
+      // Set the local weekend days
+      for (const dayOfWeek of localData.weekendDays) {
+        await supabase
+          .from('weekend_config')
+          .upsert({
+            user_id: user.id,
+            day_of_week: dayOfWeek,
+            is_weekend: true,
+          }, {
+            onConflict: 'user_id,day_of_week',
+          });
+      }
+    }
+
+    revalidatePath('/');
+    revalidatePath('/dashboard');
+
+    const refreshed = await getUserDashboardData();
+    if (!refreshed.success || !refreshed.data) {
+      return { success: false, error: 'Failed to refresh data after merge' };
+    }
+
+    return {
+      success: true,
+      data: {
+        plannerData: refreshed.data,
+        mergedCounts: { ptoDays: mergedPtoDays, holidays: mergedHolidays },
+      },
+    };
+  } catch (error) {
+    console.error('Error in mergeLocalData:', error);
+    if (error instanceof Error) {
+      return { success: false, error: error.message };
+    }
+    return { success: false, error: 'Failed to merge data' };
   }
 }
