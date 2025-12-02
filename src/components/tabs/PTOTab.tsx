@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePlanner } from '@/contexts/PlannerContext';
-import { savePTOSettings, addAccrualRule } from '@/app/actions/settings-actions';
+import { savePTOSettings, addAccrualRule, deactivateAccrualRule } from '@/app/actions/settings-actions';
 import { formatDateLocal, parseDateLocal } from '@/lib/date-utils';
 // PTO accrual frequency options
 const ACCRUAL_FREQUENCIES = [
@@ -131,13 +131,15 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
 
 const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
-  const { plannerData, setPlannerData, isAuthenticated, getSettings, saveLocalSettings } = usePlanner();
+  const { plannerData, setPlannerData, isAuthenticated, getSettings, getAccrualRules, saveLocalSettings, saveLocalAccrualRules } = usePlanner();
   const [isPending, startTransition] = useTransition();
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Initialize local settings from planner data or localStorage
   const [localSettings, setLocalSettings] = useState<LocalPTOSettings>(() => {
     const settings = getSettings();
+    const accrualRules = getAccrualRules();
+    const activeRule = accrualRules.find(r => r.is_active) || accrualRules[0];
     const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
     const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
     const hoursPerDay =
@@ -148,8 +150,8 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     return {
       initialBalance: settings.initial_balance || 15,
       asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
-      accrualFrequency: 'monthly',
-      accrualAmount: 1.25,
+      accrualFrequency: (activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency']) || 'monthly',
+      accrualAmount: activeRule?.accrual_amount ?? 1.25,
       maxCarryover: settings.carry_over_limit ?? 5,
       enableCarryoverLimit: advancedEnabled,
       carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
@@ -174,6 +176,8 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
   // Update local settings when planner data changes
   useEffect(() => {
     const settings = getSettings();
+    const accrualRules = getAccrualRules();
+    const activeRule = accrualRules.find(r => r.is_active) || accrualRules[0];
     if (settings) {
       const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
       const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
@@ -182,20 +186,21 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
       const hoursPerWeek =
         settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
       const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
-      setLocalSettings({
+      setLocalSettings((prev) => ({
         initialBalance: settings.initial_balance || 15,
         asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
-        accrualFrequency: 'monthly',
-        accrualAmount: 1.25,
+        // Only update accrual settings if we have rules, otherwise preserve current UI values
+        accrualFrequency: activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency'] || prev.accrualFrequency,
+        accrualAmount: activeRule?.accrual_amount ?? prev.accrualAmount,
         maxCarryover: settings.carry_over_limit ?? 5,
         enableCarryoverLimit: advancedEnabled,
         carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
         displayUnit,
         hoursPerDay,
         hoursPerWeek,
-      });
+      }));
     }
-  }, [plannerData?.settings, getSettings]);
+  }, [plannerData?.settings, plannerData?.accrualRules, getSettings, getAccrualRules]);
 
   // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -363,6 +368,23 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
         hours_per_week: localSettings.hoursPerWeek,
       };
       saveLocalSettings(settings);
+
+      // Save accrual rules to localStorage (using a single rule that replaces any existing)
+      const localRule = {
+        id: 'local-accrual-rule',
+        user_id: 'local',
+        name: `${localSettings.accrualFrequency} accrual`,
+        accrual_amount: localSettings.accrualAmount,
+        accrual_frequency: localSettings.accrualFrequency,
+        accrual_day: null,
+        effective_date: localSettings.asOfDate,
+        end_date: null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      saveLocalAccrualRules([localRule]);
+
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
       return;
@@ -393,7 +415,15 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
           return;
         }
 
-        // Create accrual rule
+        // Deactivate all existing accrual rules before creating a new one
+        const existingRules = plannerData?.accrualRules ?? [];
+        for (const rule of existingRules) {
+          if (rule.is_active) {
+            await deactivateAccrualRule(rule.id);
+          }
+        }
+
+        // Create new accrual rule
         const accrualResult = await addAccrualRule({
           name: `${localSettings.accrualFrequency} accrual`,
           accrual_amount: localSettings.accrualAmount,
@@ -410,12 +440,12 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
           return;
         }
 
-        // Update context with new data
+        // Update context with new data - replace all rules with the new one
         if (plannerData) {
           setPlannerData({
             ...plannerData,
             settings: settingsResult.data,
-            accrualRules: [...plannerData.accrualRules, accrualResult.data],
+            accrualRules: [accrualResult.data],
           });
         }
 
@@ -428,7 +458,7 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
         setSaveStatus('error');
       }
     });
-  }, [localSettings, isAuthenticated, plannerData, saveLocalSettings, setPlannerData, startTransition]);
+  }, [localSettings, isAuthenticated, plannerData, saveLocalSettings, saveLocalAccrualRules, setPlannerData, startTransition]);
 
   // Auto-save after settings change (debounced)
   // Using a ref to avoid handleSave in deps (it changes on every render due to localSettings)

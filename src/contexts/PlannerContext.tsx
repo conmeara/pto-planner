@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   HOLIDAYS: 'pto_planner_holidays',
   COUNTRY: 'pto_planner_country',
   SUGGESTION_PREFS: 'pto_planner_suggestion_prefs',
+  ACCRUAL_RULES: 'pto_planner_accrual_rules',
 };
 
 // ============================================================================
@@ -511,6 +512,7 @@ interface PlannerContextType {
   getCurrentBalance: () => number;
   getSettings: () => Partial<PTOSettings>;
   getHolidays: () => CustomHoliday[];
+  getAccrualRules: () => PTOAccrualRule[];
   getAccruedAmountUntil: (date: Date) => number;
   getUsedAmountBefore: (date: Date) => number;
   getBalanceAsOf: (date: Date) => number;
@@ -523,6 +525,7 @@ interface PlannerContextType {
   saveLocalSettings: (settings: Partial<PTOSettings>) => void;
   saveLocalWeekendConfig: (weekendDays: number[]) => void;
   saveLocalHolidays: (holidays: CustomHoliday[]) => void;
+  saveLocalAccrualRules: (rules: PTOAccrualRule[]) => void;
   refreshHolidays: (country?: string, options?: HolidaySyncOptions) => Promise<HolidaySyncResult>;
   removeHoliday: (holiday: HolidayRemovalTarget) => Promise<{ success: boolean; error?: string }>;
   addHoliday: (holiday: {
@@ -574,6 +577,9 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   });
   const [localHolidays, setLocalHolidays] = useState<CustomHoliday[]>(() =>
     loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, [])
+  );
+  const [localAccrualRules, setLocalAccrualRules] = useState<PTOAccrualRule[]>(() =>
+    loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, [])
   );
   const [isLoadingHolidays, setIsLoadingHolidays] = useState<boolean>(false);
 
@@ -840,6 +846,20 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     });
   }, [plannerData]);
 
+  // Helper: Get accrual rules (from DB or localStorage)
+  const getAccrualRules = useCallback((): PTOAccrualRule[] => {
+    if (plannerData?.accrualRules && plannerData.accrualRules.length > 0) {
+      return plannerData.accrualRules;
+    }
+
+    // Fallback to localStorage for unauthenticated users
+    if (!isAuthenticated && localAccrualRules.length > 0) {
+      return localAccrualRules;
+    }
+
+    return [];
+  }, [plannerData?.accrualRules, isAuthenticated, localAccrualRules]);
+
   const getAccruedAmountUntil = useCallback(
     (date: Date): number => {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
@@ -847,7 +867,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       }
 
       const settings = getSettings();
-      const accrualRules = plannerData?.accrualRules ?? [];
+      const accrualRules = getAccrualRules();
 
       if (!accrualRules.length) {
         return 0;
@@ -862,7 +882,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
       return accrualRules.reduce((sum, rule) => sum + calculateAccrualsForRule(rule, target), 0);
     },
-    [getSettings, plannerData?.accrualRules]
+    [getSettings, getAccrualRules]
   );
 
   const getUsedAmountBefore = useCallback(
@@ -967,6 +987,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   const saveLocalHolidays = useCallback((holidays: CustomHoliday[]) => {
     setLocalHolidays(holidays);
     saveToLocalStorage(STORAGE_KEYS.HOLIDAYS, holidays);
+  }, []);
+
+  // Action: Save accrual rules to localStorage
+  const saveLocalAccrualRules = useCallback((rules: PTOAccrualRule[]) => {
+    setLocalAccrualRules(rules);
+    saveToLocalStorage(STORAGE_KEYS.ACCRUAL_RULES, rules);
   }, []);
 
   const refreshHolidays = useCallback(async (
@@ -1601,6 +1627,8 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     saveLocalSettings,
     saveLocalWeekendConfig,
     saveLocalHolidays,
+    saveLocalAccrualRules,
+    getAccrualRules,
     refreshHolidays,
     removeHoliday,
     addHoliday,
