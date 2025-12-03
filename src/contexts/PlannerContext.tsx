@@ -996,29 +996,24 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   }, [plannerData, isAuthenticated, shouldUseLocalFallback]);
 
   // Helper: Get accrual rules (from DB or localStorage)
+  // For unauthenticated users, always read directly from localStorage to ensure we get the latest values
   const getAccrualRules = useCallback((): PTOAccrualRule[] => {
-    if (plannerData?.accrualRules && plannerData.accrualRules.length > 0) {
+    // For authenticated users, use database rules
+    if (isAuthenticated && plannerData?.accrualRules && plannerData.accrualRules.length > 0) {
       return plannerData.accrualRules;
     }
 
-    // Fallback to localStorage for unauthenticated users
-    if (!isAuthenticated && localAccrualRules.length > 0) {
-      console.log('[getAccrualRules] Returning local rules:', localAccrualRules);
-      return localAccrualRules;
-    }
-
-    // Also try loading directly from localStorage as a fallback
+    // For unauthenticated users, always read directly from localStorage
+    // This ensures we get the latest saved values without relying on React state timing
     if (!isAuthenticated) {
       const storedRules = loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, []);
       if (storedRules.length > 0) {
-        console.log('[getAccrualRules] Loaded from localStorage directly:', storedRules);
         return storedRules;
       }
     }
 
-    console.log('[getAccrualRules] Returning empty array, isAuthenticated:', isAuthenticated, 'localAccrualRules:', localAccrualRules);
     return [];
-  }, [plannerData?.accrualRules, isAuthenticated, localAccrualRules]);
+  }, [plannerData?.accrualRules, isAuthenticated]);
 
   const getAccruedAmountUntil = useCallback(
     (date: Date): number => {
