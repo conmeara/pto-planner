@@ -1003,9 +1003,20 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
     // Fallback to localStorage for unauthenticated users
     if (!isAuthenticated && localAccrualRules.length > 0) {
+      console.log('[getAccrualRules] Returning local rules:', localAccrualRules);
       return localAccrualRules;
     }
 
+    // Also try loading directly from localStorage as a fallback
+    if (!isAuthenticated) {
+      const storedRules = loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, []);
+      if (storedRules.length > 0) {
+        console.log('[getAccrualRules] Loaded from localStorage directly:', storedRules);
+        return storedRules;
+      }
+    }
+
+    console.log('[getAccrualRules] Returning empty array, isAuthenticated:', isAuthenticated, 'localAccrualRules:', localAccrualRules);
     return [];
   }, [plannerData?.accrualRules, isAuthenticated, localAccrualRules]);
 
@@ -1019,6 +1030,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       const accrualRules = getAccrualRules();
 
       if (!accrualRules.length) {
+        console.log('[getAccruedAmountUntil] No accrual rules found');
         return 0;
       }
 
@@ -1029,7 +1041,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         return 0;
       }
 
-      return accrualRules.reduce((sum, rule) => sum + calculateAccrualsForRule(rule, target), 0);
+      const accrued = accrualRules.reduce((sum, rule) => {
+        const ruleAccrual = calculateAccrualsForRule(rule, target);
+        return sum + ruleAccrual;
+      }, 0);
+
+      return accrued;
     },
     [getSettings, getAccrualRules]
   );
