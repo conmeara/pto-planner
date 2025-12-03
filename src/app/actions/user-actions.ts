@@ -64,6 +64,25 @@ export async function initializeUserAccount(
       // Don't fail if settings creation fails - user can set up later
     }
 
+    // Create default accrual rule (monthly, 1.25 days)
+    const { error: accrualError } = await supabase
+      .from('pto_accrual_rules')
+      .insert({
+        user_id: userId,
+        name: 'Monthly accrual',
+        accrual_amount: 1.25,
+        accrual_frequency: 'monthly',
+        accrual_day: null,
+        effective_date: ptoStartDate,
+        end_date: null,
+        is_active: true,
+      });
+
+    if (accrualError) {
+      console.error('Error creating default accrual rule:', accrualError);
+      // Don't fail if accrual rule creation fails - user can set up later
+    }
+
     // Note: Weekend config is created automatically via database trigger
 
     revalidatePath('/dashboard');
