@@ -23,6 +23,18 @@ const STORAGE_KEYS = {
   ACCRUAL_RULES: 'pto_planner_accrual_rules',
 };
 
+/**
+ * Synchronously persist selected PTO days to localStorage
+ * Called immediately when days change to prevent data loss during navigation
+ */
+const persistSelectedDaysSync = (days: Date[]): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const dateStrings = days.map((date) => formatDateLocal(date));
+  saveToLocalStorage(STORAGE_KEYS.SELECTED_DAYS, dateStrings);
+};
+
 // ============================================================================
 // LocalStorage Helper Functions
 // ============================================================================
@@ -82,8 +94,8 @@ const clearLocalStorageData = (): void => {
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.WEEKEND_CONFIG);
     localStorage.removeItem(STORAGE_KEYS.HOLIDAYS);
+    localStorage.removeItem(STORAGE_KEYS.ACCRUAL_RULES);
     // Note: Keep COUNTRY and SUGGESTION_PREFS as they're user preferences, not data
-    // Also keep ACCRUAL_RULES for now
   } catch (error) {
     console.error('Error clearing localStorage:', error);
   }
@@ -618,6 +630,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     settings: Partial<PTOSettings>;
     holidays: CustomHoliday[];
     weekendDays: number[];
+    accrualRules: PTOAccrualRule[];
   } | null>(null);
 
   const isAuthenticated = !!plannerData?.user;
@@ -756,12 +769,14 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
     const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
     const storedWeekend = loadFromLocalStorage<number[]>(STORAGE_KEYS.WEEKEND_CONFIG, []);
+    const storedAccrualRules = loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, []);
 
     const hasLocalData =
       storedDays.length > 0 ||
       Object.keys(storedSettings).length > 0 ||
       storedHolidays.length > 0 ||
-      storedWeekend.length > 0;
+      storedWeekend.length > 0 ||
+      storedAccrualRules.length > 0;
 
     if (!hasLocalData) {
       // No data to migrate, mark as done
@@ -776,7 +791,13 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
     if (userHasExistingData) {
       // User has existing account data AND local data - show conflict resolution modal
-      console.log('Conflict detected: user has both local and synced data');
+      console.log('Conflict detected: user has both local and synced data', {
+        localPtoDays: storedDays.length,
+        localHolidays: storedHolidays.length,
+        localAccrualRules: storedAccrualRules.length,
+        syncedPtoDays: plannerData.ptoDays?.length || 0,
+        syncedHolidays: plannerData.holidays?.length || 0,
+      });
 
       // Store the local data for later use
       pendingLocalDataRef.current = {
@@ -784,6 +805,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         settings: storedSettings,
         holidays: storedHolidays,
         weekendDays: storedWeekend,
+        accrualRules: storedAccrualRules,
       };
 
       // Set conflict data for the modal
@@ -803,6 +825,13 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     // Perform migration for new users only
     const performMigration = async () => {
       try {
+        console.log('Migrating local data for new user:', {
+          ptoDays: storedDays.length,
+          holidays: storedHolidays.length,
+          accrualRules: storedAccrualRules.length,
+          hasSettings: Object.keys(storedSettings).length > 0,
+        });
+
         const result = await migrateLocalDataToDatabase({
           selectedDays: storedDays,
           settings: {
@@ -820,6 +849,15 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
             is_paid_holiday: h.is_paid_holiday,
           })),
           weekendDays: storedWeekend,
+          accrualRules: storedAccrualRules.map(r => ({
+            name: r.name,
+            accrual_amount: r.accrual_amount,
+            accrual_frequency: r.accrual_frequency,
+            accrual_day: r.accrual_day,
+            effective_date: r.effective_date,
+            end_date: r.end_date,
+            is_active: r.is_active,
+          })),
         });
 
         if (result.success && result.data?.migrated) {
@@ -849,11 +887,12 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     performMigration();
   }, [isAuthenticated, plannerData?.user?.id, plannerData?.ptoDays, plannerData?.holidays]);
 
-  // Save selected days to localStorage when not authenticated
+  // Backup persistence: Reconcile selected days to localStorage when not authenticated
+  // Primary persistence happens synchronously in toggleDaySelection/applySuggestions
+  // This effect ensures consistency if state is modified through other means
   useEffect(() => {
-    if (!isAuthenticated && selectedDays.length >= 0) {
-      const dateStrings = selectedDays.map((date) => formatDateLocal(date));
-      saveToLocalStorage(STORAGE_KEYS.SELECTED_DAYS, dateStrings);
+    if (!isAuthenticated && selectedDays.length > 0) {
+      persistSelectedDaysSync(selectedDays);
     }
   }, [selectedDays, isAuthenticated]);
 
@@ -1643,15 +1682,27 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
 
       if (isSelected) {
         // Remove from selection
-        setSelectedDays((prev) =>
-          prev.filter((d) => !isSameDay(d, date))
-        );
+        setSelectedDays((prev) => {
+          const newDays = prev.filter((d) => !isSameDay(d, date));
+          // Persist synchronously for unauthenticated users to prevent data loss during navigation
+          if (!isAuthenticated) {
+            persistSelectedDaysSync(newDays);
+          }
+          return newDays;
+        });
       } else {
         // Add to selection
-        setSelectedDays((prev) => [...prev, date]);
+        setSelectedDays((prev) => {
+          const newDays = [...prev, date];
+          // Persist synchronously for unauthenticated users to prevent data loss during navigation
+          if (!isAuthenticated) {
+            persistSelectedDaysSync(newDays);
+          }
+          return newDays;
+        });
       }
     },
-    [isDateSelected]
+    [isDateSelected, isAuthenticated]
   );
 
   // Action: Resolve data conflict
@@ -1673,6 +1724,14 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         console.log('Conflict resolved: keeping synced data');
       } else if (resolution === 'use-local') {
         // User chose to replace with local data
+        console.log('Replacing with local data:', {
+          ptoDays: localData.selectedDays.length,
+          holidays: localData.holidays.length,
+          accrualRules: localData.accrualRules.length,
+          hasSettings: Object.keys(localData.settings).length > 0,
+          weekendDays: localData.weekendDays,
+        });
+
         const result = await replaceWithLocalData({
           selectedDays: localData.selectedDays,
           settings: {
@@ -1690,6 +1749,15 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
             is_paid_holiday: h.is_paid_holiday,
           })),
           weekendDays: localData.weekendDays,
+          accrualRules: localData.accrualRules.map(r => ({
+            name: r.name,
+            accrual_amount: r.accrual_amount,
+            accrual_frequency: r.accrual_frequency,
+            accrual_day: r.accrual_day,
+            effective_date: r.effective_date,
+            end_date: r.end_date,
+            is_active: r.is_active,
+          })),
         });
 
         if (result.success && result.data?.plannerData) {
@@ -1697,12 +1765,22 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
           clearLocalStorageData();
           localStorage.setItem(migrationKey, 'true');
           setShouldUseLocalFallback(false);
-          console.log('Conflict resolved: replaced with local data');
+          console.log('Conflict resolved: replaced with local data', {
+            migratedPtoDays: result.data.plannerData.ptoDays?.length || 0,
+            migratedHolidays: result.data.plannerData.holidays?.length || 0,
+            migratedAccrualRules: result.data.plannerData.accrualRules?.length || 0,
+          });
         } else if (!result.success) {
           console.error('Failed to replace with local data:', result.error);
         }
       } else if (resolution === 'merge') {
         // User chose to merge both datasets
+        console.log('Merging local data with synced data:', {
+          ptoDays: localData.selectedDays.length,
+          holidays: localData.holidays.length,
+          accrualRules: localData.accrualRules.length,
+        });
+
         const result = await mergeLocalData({
           selectedDays: localData.selectedDays,
           settings: {
@@ -1720,6 +1798,15 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
             is_paid_holiday: h.is_paid_holiday,
           })),
           weekendDays: localData.weekendDays,
+          accrualRules: localData.accrualRules.map(r => ({
+            name: r.name,
+            accrual_amount: r.accrual_amount,
+            accrual_frequency: r.accrual_frequency,
+            accrual_day: r.accrual_day,
+            effective_date: r.effective_date,
+            end_date: r.end_date,
+            is_active: r.is_active,
+          })),
         });
 
         if (result.success && result.data?.plannerData) {
@@ -1757,12 +1844,16 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
           combined.push(suggestedDate);
         }
       });
+      // Persist synchronously for unauthenticated users
+      if (!isAuthenticated) {
+        persistSelectedDaysSync(combined);
+      }
       return combined;
     });
 
     // Clear suggestions after applying
     clearSuggestions();
-  }, [suggestedDays, clearSuggestions]);
+  }, [suggestedDays, clearSuggestions, isAuthenticated]);
 
   const updateSuggestionPreferences = useCallback(
     (
