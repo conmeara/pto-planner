@@ -756,15 +756,10 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       return;
     }
 
-    // Check if migration has already been done for this user
     const migrationKey = `pto_planner_migration_done_${plannerData.user.id}`;
-    const migrationDone = localStorage.getItem(migrationKey);
 
-    if (migrationDone) {
-      return; // Already migrated
-    }
-
-    // Check if there's any localStorage data to migrate
+    // Check if there's any localStorage data to migrate FIRST
+    // This is important because the user may have added new data since last migration
     const storedDays = loadFromLocalStorage<string[]>(STORAGE_KEYS.SELECTED_DAYS, []);
     const storedSettings = loadFromLocalStorage<Partial<PTOSettings>>(STORAGE_KEYS.SETTINGS, {});
     const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
@@ -778,11 +773,20 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
       storedWeekend.length > 0 ||
       storedAccrualRules.length > 0;
 
+    // If no local data to migrate, mark as done and return
     if (!hasLocalData) {
-      // No data to migrate, mark as done
       localStorage.setItem(migrationKey, 'true');
       return;
     }
+
+    // If there IS local data, we need to check if migration is needed
+    // even if the migration flag is set (user may have added new data after migration)
+    console.log('[Migration] Found local data:', {
+      ptoDays: storedDays.length,
+      holidays: storedHolidays.length,
+      accrualRules: storedAccrualRules.length,
+      hasSettings: Object.keys(storedSettings).length > 0,
+    });
 
     // Check if user already has data in the database (returning user)
     const userHasExistingPtoDays = plannerData.ptoDays && plannerData.ptoDays.length > 0;
