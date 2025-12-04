@@ -244,6 +244,15 @@ export async function migrateLocalDataToDatabase(localData: {
   }>;
   weekendDays?: number[];
   countryCode?: string;
+  accrualRules?: Array<{
+    name: string;
+    accrual_amount: number;
+    accrual_frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+    accrual_day?: number | null;
+    effective_date: string;
+    end_date?: string | null;
+    is_active: boolean;
+  }>;
 }): Promise<ActionResult<{ migrated: boolean; details: string[]; plannerData?: PlannerData }>> {
   try {
     const supabase = await createClient();
@@ -401,6 +410,48 @@ export async function migrateLocalDataToDatabase(localData: {
       migratedSomething = true;
     }
 
+    // 5. Migrate Accrual Rules
+    if (localData.accrualRules && localData.accrualRules.length > 0) {
+      // Check if any accrual rules already exist (might have been created by initializeUserAccount)
+      const { data: existingRules } = await supabase
+        .from('pto_accrual_rules')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+      // Only migrate if no rules exist yet
+      if (!existingRules || existingRules.length === 0) {
+        let migratedRules = 0;
+        for (const rule of localData.accrualRules) {
+          const { error: ruleError } = await supabase
+            .from('pto_accrual_rules')
+            .insert({
+              user_id: user.id,
+              name: rule.name,
+              accrual_amount: rule.accrual_amount,
+              accrual_frequency: rule.accrual_frequency,
+              accrual_day: rule.accrual_day,
+              effective_date: rule.effective_date,
+              end_date: rule.end_date,
+              is_active: rule.is_active,
+            });
+
+          if (!ruleError) {
+            migratedRules++;
+          } else {
+            console.error('Error migrating accrual rule:', ruleError);
+          }
+        }
+
+        if (migratedRules > 0) {
+          details.push(`Migrated ${migratedRules} accrual rule${migratedRules === 1 ? '' : 's'}`);
+          migratedSomething = true;
+        }
+      } else {
+        details.push(`Skipped ${localData.accrualRules.length} accrual rule${localData.accrualRules.length === 1 ? '' : 's'} (rules already exist)`);
+      }
+    }
+
     let refreshedPlannerData: PlannerData | undefined;
 
     if (migratedSomething) {
@@ -451,6 +502,15 @@ export async function replaceWithLocalData(localData: {
     is_paid_holiday?: boolean;
   }>;
   weekendDays?: number[];
+  accrualRules?: Array<{
+    name: string;
+    accrual_amount: number;
+    accrual_frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+    accrual_day?: number | null;
+    effective_date: string;
+    end_date?: string | null;
+    is_active: boolean;
+  }>;
 }): Promise<ActionResult<{ plannerData: PlannerData }>> {
   try {
     const supabase = await createClient();
@@ -460,6 +520,12 @@ export async function replaceWithLocalData(localData: {
       return { success: false, error: 'Unauthorized' };
     }
 
+    console.log('[replaceWithLocalData] Starting replacement for user:', user.id, {
+      ptoDaysCount: localData.selectedDays?.length || 0,
+      holidaysCount: localData.holidays?.length || 0,
+      accrualRulesCount: localData.accrualRules?.length || 0,
+    });
+
     // 1. Delete all existing PTO days
     const { error: deletePtoError } = await supabase
       .from('pto_days')
@@ -467,40 +533,62 @@ export async function replaceWithLocalData(localData: {
       .eq('user_id', user.id);
 
     if (deletePtoError) {
-      console.error('Error deleting PTO days:', deletePtoError);
+      console.error('[replaceWithLocalData] Error deleting PTO days:', deletePtoError);
     }
 
-    // 2. Delete all existing holidays (keep only non-user holidays if any)
+    // 2. Delete all existing holidays
     const { error: deleteHolidaysError } = await supabase
       .from('custom_holidays')
       .delete()
       .eq('user_id', user.id);
 
     if (deleteHolidaysError) {
-      console.error('Error deleting holidays:', deleteHolidaysError);
+      console.error('[replaceWithLocalData] Error deleting holidays:', deleteHolidaysError);
     }
 
-    // 3. Insert local PTO days
+    // 3. Delete all existing accrual rules
+    const { error: deleteAccrualError } = await supabase
+      .from('pto_accrual_rules')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (deleteAccrualError) {
+      console.error('[replaceWithLocalData] Error deleting accrual rules:', deleteAccrualError);
+    }
+
+    // 4. Insert local PTO days with error handling
+    let insertedPtoDays = 0;
     if (localData.selectedDays && localData.selectedDays.length > 0) {
       const ptoAmount = localData.settings?.pto_display_unit === 'hours'
         ? (localData.settings.hours_per_day || 8)
         : 1;
 
+      console.log('[replaceWithLocalData] Inserting PTO days:', localData.selectedDays);
+
       for (const dateStr of localData.selectedDays) {
-        await supabase.rpc('add_pto_day', {
+        const { error: rpcError } = await supabase.rpc('add_pto_day', {
           p_user_id: user.id,
           p_date: dateStr,
           p_amount: ptoAmount,
           p_status: 'planned',
           p_description: 'Imported from local storage',
         });
+
+        if (rpcError) {
+          console.error('[replaceWithLocalData] Error inserting PTO day:', dateStr, rpcError);
+        } else {
+          insertedPtoDays++;
+        }
       }
+
+      console.log('[replaceWithLocalData] Inserted PTO days:', insertedPtoDays, 'of', localData.selectedDays.length);
     }
 
-    // 4. Insert local holidays
+    // 5. Insert local holidays with error handling
+    let insertedHolidays = 0;
     if (localData.holidays && localData.holidays.length > 0) {
       for (const holiday of localData.holidays) {
-        await supabase
+        const { error: holidayError } = await supabase
           .from('custom_holidays')
           .insert({
             user_id: user.id,
@@ -509,10 +597,45 @@ export async function replaceWithLocalData(localData: {
             repeats_yearly: holiday.repeats_yearly ?? true,
             is_paid_holiday: holiday.is_paid_holiday ?? true,
           });
+
+        if (holidayError) {
+          console.error('[replaceWithLocalData] Error inserting holiday:', holiday.name, holidayError);
+        } else {
+          insertedHolidays++;
+        }
       }
+
+      console.log('[replaceWithLocalData] Inserted holidays:', insertedHolidays, 'of', localData.holidays.length);
     }
 
-    // 5. Update settings if provided
+    // 6. Insert local accrual rules with error handling
+    let insertedAccrualRules = 0;
+    if (localData.accrualRules && localData.accrualRules.length > 0) {
+      for (const rule of localData.accrualRules) {
+        const { error: accrualError } = await supabase
+          .from('pto_accrual_rules')
+          .insert({
+            user_id: user.id,
+            name: rule.name,
+            accrual_amount: rule.accrual_amount,
+            accrual_frequency: rule.accrual_frequency,
+            accrual_day: rule.accrual_day,
+            effective_date: rule.effective_date,
+            end_date: rule.end_date,
+            is_active: rule.is_active,
+          });
+
+        if (accrualError) {
+          console.error('[replaceWithLocalData] Error inserting accrual rule:', rule.name, accrualError);
+        } else {
+          insertedAccrualRules++;
+        }
+      }
+
+      console.log('[replaceWithLocalData] Inserted accrual rules:', insertedAccrualRules, 'of', localData.accrualRules.length);
+    }
+
+    // 7. Update settings if provided
     if (localData.settings && Object.keys(localData.settings).length > 0) {
       const settingsUpdate: Record<string, unknown> = {};
       if (localData.settings.initial_balance !== undefined) {
@@ -535,14 +658,18 @@ export async function replaceWithLocalData(localData: {
       }
 
       if (Object.keys(settingsUpdate).length > 0) {
-        await supabase
+        const { error: settingsError } = await supabase
           .from('pto_settings')
           .update(settingsUpdate)
           .eq('user_id', user.id);
+
+        if (settingsError) {
+          console.error('[replaceWithLocalData] Error updating settings:', settingsError);
+        }
       }
     }
 
-    // 6. Update weekend config if provided
+    // 8. Update weekend config if provided
     if (localData.weekendDays && localData.weekendDays.length > 0) {
       // Reset all to non-weekend first
       await supabase
@@ -572,9 +699,15 @@ export async function replaceWithLocalData(localData: {
       return { success: false, error: 'Failed to refresh data after replacement' };
     }
 
+    console.log('[replaceWithLocalData] Complete. Refreshed data:', {
+      ptoDays: refreshed.data.ptoDays?.length || 0,
+      holidays: refreshed.data.holidays?.length || 0,
+      accrualRules: refreshed.data.accrualRules?.length || 0,
+    });
+
     return { success: true, data: { plannerData: refreshed.data } };
   } catch (error) {
-    console.error('Error in replaceWithLocalData:', error);
+    console.error('[replaceWithLocalData] Error:', error);
     if (error instanceof Error) {
       return { success: false, error: error.message };
     }
@@ -588,6 +721,7 @@ export async function replaceWithLocalData(localData: {
  * - PTO days: Add local days that don't already exist in DB
  * - Settings: Local settings override DB settings
  * - Holidays: Add local holidays that don't already exist (by date+name)
+ * - Accrual rules: Add local rules that don't already exist (by name)
  */
 export async function mergeLocalData(localData: {
   selectedDays: string[];
@@ -606,7 +740,16 @@ export async function mergeLocalData(localData: {
     is_paid_holiday?: boolean;
   }>;
   weekendDays?: number[];
-}): Promise<ActionResult<{ plannerData: PlannerData; mergedCounts: { ptoDays: number; holidays: number } }>> {
+  accrualRules?: Array<{
+    name: string;
+    accrual_amount: number;
+    accrual_frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+    accrual_day?: number | null;
+    effective_date: string;
+    end_date?: string | null;
+    is_active: boolean;
+  }>;
+}): Promise<ActionResult<{ plannerData: PlannerData; mergedCounts: { ptoDays: number; holidays: number; accrualRules: number } }>> {
   try {
     const supabase = await createClient();
 
@@ -731,6 +874,38 @@ export async function mergeLocalData(localData: {
       }
     }
 
+    // 5. Merge accrual rules (add only non-duplicate names)
+    let mergedAccrualRules = 0;
+    if (localData.accrualRules && localData.accrualRules.length > 0) {
+      // Get existing accrual rules
+      const { data: existingRules } = await supabase
+        .from('pto_accrual_rules')
+        .select('name')
+        .eq('user_id', user.id);
+
+      const existingNames = new Set(existingRules?.map(r => r.name) || []);
+
+      for (const rule of localData.accrualRules) {
+        if (!existingNames.has(rule.name)) {
+          const { error } = await supabase
+            .from('pto_accrual_rules')
+            .insert({
+              user_id: user.id,
+              name: rule.name,
+              accrual_amount: rule.accrual_amount,
+              accrual_frequency: rule.accrual_frequency,
+              accrual_day: rule.accrual_day,
+              effective_date: rule.effective_date,
+              end_date: rule.end_date,
+              is_active: rule.is_active,
+            });
+          if (!error) {
+            mergedAccrualRules++;
+          }
+        }
+      }
+    }
+
     revalidatePath('/');
     revalidatePath('/dashboard');
 
@@ -739,15 +914,21 @@ export async function mergeLocalData(localData: {
       return { success: false, error: 'Failed to refresh data after merge' };
     }
 
+    console.log('[mergeLocalData] Complete. Merged counts:', {
+      ptoDays: mergedPtoDays,
+      holidays: mergedHolidays,
+      accrualRules: mergedAccrualRules,
+    });
+
     return {
       success: true,
       data: {
         plannerData: refreshed.data,
-        mergedCounts: { ptoDays: mergedPtoDays, holidays: mergedHolidays },
+        mergedCounts: { ptoDays: mergedPtoDays, holidays: mergedHolidays, accrualRules: mergedAccrualRules },
       },
     };
   } catch (error) {
-    console.error('Error in mergeLocalData:', error);
+    console.error('[mergeLocalData] Error:', error);
     if (error instanceof Error) {
       return { success: false, error: error.message };
     }
