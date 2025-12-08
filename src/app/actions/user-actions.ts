@@ -265,6 +265,7 @@ export async function migrateLocalDataToDatabase(localData: {
 
     const details: string[] = [];
     let migratedSomething = false;
+    let migrationError: string | null = null;
 
     // 1. Migrate PTO Settings
     // Check if there are meaningful local settings to migrate (not just empty defaults)
@@ -329,24 +330,25 @@ export async function migrateLocalDataToDatabase(localData: {
           ? (localData.settings.hours_per_day || 8)
           : 1;
 
-        let migratedDays = 0;
-        for (const dateStr of localData.selectedDays) {
-          const { error: dayError } = await supabase.rpc('add_pto_day', {
-            p_user_id: user.id,
-            p_date: dateStr,
-            p_amount: ptoAmount,
-            p_status: 'planned',
-            p_description: 'Migrated from local storage',
-          });
+        const { error: ptoInsertError } = await supabase
+          .from('pto_days')
+          .insert(
+            localData.selectedDays.map((dateStr) => ({
+              user_id: user.id,
+              date: dateStr,
+              amount: ptoAmount,
+              status: 'planned',
+              description: 'Migrated from local storage',
+            }))
+          );
 
-          if (!dayError) {
-            migratedDays++;
-          }
-        }
-
-        if (migratedDays > 0) {
-          details.push(`Migrated ${migratedDays} PTO day${migratedDays === 1 ? '' : 's'}`);
+        if (!ptoInsertError) {
+          details.push(`Migrated ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'}`);
           migratedSomething = true;
+        } else {
+          console.error('Error migrating PTO days:', ptoInsertError);
+          details.push('Failed to migrate PTO days from this device');
+          migrationError = ptoInsertError.message;
         }
       } else {
         details.push(`Skipped ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'} (PTO days already exist)`);
@@ -461,6 +463,12 @@ export async function migrateLocalDataToDatabase(localData: {
       }
     }
 
+    if (migrationError) {
+      revalidatePath('/');
+      revalidatePath('/dashboard');
+      return { success: false, error: migrationError };
+    }
+
     revalidatePath('/');
     revalidatePath('/dashboard');
 
@@ -558,6 +566,7 @@ export async function replaceWithLocalData(localData: {
 
     // 4. Insert local PTO days with error handling
     let insertedPtoDays = 0;
+    let ptoInsertError: string | null = null;
     if (localData.selectedDays && localData.selectedDays.length > 0) {
       const ptoAmount = localData.settings?.pto_display_unit === 'hours'
         ? (localData.settings.hours_per_day || 8)
@@ -565,20 +574,23 @@ export async function replaceWithLocalData(localData: {
 
       console.log('[replaceWithLocalData] Inserting PTO days:', localData.selectedDays);
 
-      for (const dateStr of localData.selectedDays) {
-        const { error: rpcError } = await supabase.rpc('add_pto_day', {
-          p_user_id: user.id,
-          p_date: dateStr,
-          p_amount: ptoAmount,
-          p_status: 'planned',
-          p_description: 'Imported from local storage',
-        });
+      const { error: insertError } = await supabase
+        .from('pto_days')
+        .insert(
+          localData.selectedDays.map((dateStr) => ({
+            user_id: user.id,
+            date: dateStr,
+            amount: ptoAmount,
+            status: 'planned',
+            description: 'Imported from local storage',
+          }))
+        );
 
-        if (rpcError) {
-          console.error('[replaceWithLocalData] Error inserting PTO day:', dateStr, rpcError);
-        } else {
-          insertedPtoDays++;
-        }
+      if (insertError) {
+        console.error('[replaceWithLocalData] Error inserting PTO days:', insertError);
+        ptoInsertError = insertError.message;
+      } else {
+        insertedPtoDays = localData.selectedDays.length;
       }
 
       console.log('[replaceWithLocalData] Inserted PTO days:', insertedPtoDays, 'of', localData.selectedDays.length);
@@ -764,30 +776,43 @@ export async function mergeLocalData(localData: {
     // 1. Merge PTO days (add only non-duplicate dates)
     if (localData.selectedDays && localData.selectedDays.length > 0) {
       // Get existing PTO days
-      const { data: existingPtoDays } = await supabase
+      const { data: existingPtoDays, error: existingPtoError } = await supabase
         .from('pto_days')
         .select('date')
         .eq('user_id', user.id);
 
-      const existingDates = new Set(existingPtoDays?.map(d => d.date) || []);
+      if (existingPtoError) {
+        console.error('[mergeLocalData] Error fetching PTO days:', existingPtoError);
+        return { success: false, error: existingPtoError.message };
+      }
+
+      const existingDates = new Set((existingPtoDays ?? []).map((d) => d.date));
 
       const ptoAmount = localData.settings?.pto_display_unit === 'hours'
         ? (localData.settings.hours_per_day || 8)
         : 1;
 
-      for (const dateStr of localData.selectedDays) {
-        if (!existingDates.has(dateStr)) {
-          const { error } = await supabase.rpc('add_pto_day', {
-            p_user_id: user.id,
-            p_date: dateStr,
-            p_amount: ptoAmount,
-            p_status: 'planned',
-            p_description: 'Merged from local storage',
-          });
-          if (!error) {
-            mergedPtoDays++;
-          }
+      const newPtoDays = localData.selectedDays
+        .filter((dateStr) => !existingDates.has(dateStr))
+        .map((dateStr) => ({
+          user_id: user.id,
+          date: dateStr,
+          amount: ptoAmount,
+          status: 'planned',
+          description: 'Merged from local storage',
+        }));
+
+      if (newPtoDays.length > 0) {
+        const { error: insertError } = await supabase
+          .from('pto_days')
+          .insert(newPtoDays);
+
+        if (insertError) {
+          console.error('[mergeLocalData] Error inserting PTO days:', insertError);
+          return { success: false, error: insertError.message };
         }
+
+        mergedPtoDays = newPtoDays.length;
       }
     }
 
