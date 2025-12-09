@@ -143,7 +143,7 @@ export async function addAccrualRule(
     }
 
     // Call database function to add accrual rule
-    const { data, error } = await supabase.rpc('add_accrual_rule', {
+    const { data: newRuleId, error } = await supabase.rpc('add_accrual_rule', {
       p_user_id: user.id,
       p_name: validatedRule.name,
       p_accrual_amount: validatedRule.accrual_amount,
@@ -158,10 +158,26 @@ export async function addAccrualRule(
       return { success: false, error: error.message };
     }
 
+    if (!newRuleId) {
+      return { success: false, error: 'Failed to create accrual rule' };
+    }
+
+    // Fetch the full rule record so callers receive complete data
+    const { data: fullRule, error: fetchError } = await supabase
+      .from('pto_accrual_rules')
+      .select('*')
+      .eq('id', newRuleId)
+      .single();
+
+    if (fetchError || !fullRule) {
+      console.error('Error fetching newly created accrual rule:', fetchError);
+      return { success: false, error: fetchError?.message ?? 'Failed to load accrual rule' };
+    }
+
     // Revalidate the dashboard
     revalidatePath('/dashboard');
 
-    return { success: true, data };
+    return { success: true, data: fullRule as PTOAccrualRule };
   } catch (error) {
     console.error('Error in addAccrualRule:', error);
     if (error instanceof Error) {

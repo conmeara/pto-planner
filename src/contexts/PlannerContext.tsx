@@ -126,6 +126,18 @@ const createHolidayKey = (holiday: Pick<CustomHoliday, 'date' | 'name'>): string
   return `${holiday.date}__${holiday.name}`;
 };
 
+const normalizeAccrualRules = (rules: PTOAccrualRule[]): PTOAccrualRule[] => {
+  return rules.filter((rule) => {
+    return (
+      rule &&
+      typeof rule === 'object' &&
+      typeof rule.accrual_amount === 'number' &&
+      typeof rule.accrual_frequency === 'string' &&
+      typeof rule.effective_date === 'string'
+    );
+  });
+};
+
 const mergeHolidayCollections = (
   existing: CustomHoliday[],
   incoming: CustomHoliday[],
@@ -1041,21 +1053,25 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   // Helper: Get accrual rules (from DB or localStorage)
   // For unauthenticated users, always read directly from localStorage to ensure we get the latest values
   const getAccrualRules = useCallback((): PTOAccrualRule[] => {
-    // For authenticated users, use database rules
-    if (isAuthenticated && plannerData?.accrualRules && plannerData.accrualRules.length > 0) {
-      return plannerData.accrualRules;
+    const normalizedFromDb =
+      plannerData?.accrualRules && plannerData.accrualRules.length > 0
+        ? normalizeAccrualRules(plannerData.accrualRules)
+        : [];
+
+    if (isAuthenticated && normalizedFromDb.length > 0) {
+      return normalizedFromDb;
     }
 
-    // For unauthenticated users, always read directly from localStorage
-    // This ensures we get the latest saved values without relying on React state timing
-    if (!isAuthenticated) {
-      const storedRules = loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, []);
-      if (storedRules.length > 0) {
-        return storedRules;
+    // Fall back to localStorage rules (useful right after sign-in/migration while DB rules are pending)
+    const storedRules = loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, []);
+    if (storedRules.length > 0) {
+      const normalizedLocal = normalizeAccrualRules(storedRules);
+      if (normalizedLocal.length > 0) {
+        return normalizedLocal;
       }
     }
 
-    return [];
+    return normalizedFromDb;
   }, [plannerData?.accrualRules, isAuthenticated]);
 
   const getAccruedAmountUntil = useCallback(
