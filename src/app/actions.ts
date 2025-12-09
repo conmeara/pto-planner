@@ -240,5 +240,6 @@ export const signOutAction = async () => {
   const cookieStore = await cookies();
   cookieStore.delete(MAGIC_LINK_RATE_LIMIT_COOKIE);
 
-  return redirect("/sign-in");
+  // Return user to the main planner (unauthenticated view uses local data)
+  return redirect("/");
 };
