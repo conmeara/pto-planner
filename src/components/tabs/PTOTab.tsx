@@ -147,12 +147,16 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     const hoursPerWeek =
       settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
     const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
+    // Use existing carryover limit if set, otherwise use a high value that won't affect balance
+    // This prevents toggling advanced mode from immediately applying a restrictive default
+    const initialBalance = settings.initial_balance || 15;
+    const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : initialBalance * 10;
     return {
-      initialBalance: settings.initial_balance || 15,
+      initialBalance,
       asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
       accrualFrequency: (activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency']) || 'monthly',
       accrualAmount: activeRule?.accrual_amount ?? 1.25,
-      maxCarryover: settings.carry_over_limit ?? 5,
+      maxCarryover,
       enableCarryoverLimit: advancedEnabled,
       carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
       displayUnit,
@@ -186,13 +190,16 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
       const hoursPerWeek =
         settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
       const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
+      // Use existing carryover limit if set, otherwise use a high value that won't affect balance
+      const initialBalance = settings.initial_balance || 15;
+      const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : initialBalance * 10;
       setLocalSettings((prev) => ({
-        initialBalance: settings.initial_balance || 15,
+        initialBalance,
         asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
         // Only update accrual settings if we have rules, otherwise preserve current UI values
         accrualFrequency: activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency'] || prev.accrualFrequency,
         accrualAmount: activeRule?.accrual_amount ?? prev.accrualAmount,
-        maxCarryover: settings.carry_over_limit ?? 5,
+        maxCarryover,
         enableCarryoverLimit: advancedEnabled,
         carryoverResetDate: settings.renewal_date || getDefaultResetDate(settings.pto_start_date),
         displayUnit,
