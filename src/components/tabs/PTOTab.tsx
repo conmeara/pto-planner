@@ -107,7 +107,7 @@ interface LocalPTOSettings {
   asOfDate: string;
   accrualFrequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   accrualAmount: number;
-  maxCarryover: number;
+  maxCarryover: number | null; // null means no limit
   enableCarryoverLimit: boolean;
   carryoverResetDate: string;
   displayUnit: 'days' | 'hours';
@@ -140,19 +140,16 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     const settings = getSettings();
     const accrualRules = getAccrualRules();
     const activeRule = accrualRules.find(r => r.is_active) || accrualRules[0];
-    const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
     const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
     const hoursPerDay =
       settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : DEFAULT_HOURS_PER_DAY;
     const hoursPerWeek =
       settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
-    const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
-    // Use existing carryover limit if set, otherwise use a high value that won't affect balance
-    // This prevents toggling advanced mode from immediately applying a restrictive default
-    const initialBalance = settings.initial_balance || 15;
-    const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : initialBalance * 10;
+    const advancedEnabled = hasCustomHourSettings(hoursPerDay, hoursPerWeek);
+    // null means no limit - only set a value if one exists in settings
+    const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : null;
     return {
-      initialBalance,
+      initialBalance: settings.initial_balance || 15,
       asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
       accrualFrequency: (activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency']) || 'monthly',
       accrualAmount: activeRule?.accrual_amount ?? 1.25,
@@ -183,18 +180,16 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     const accrualRules = getAccrualRules();
     const activeRule = accrualRules.find(r => r.is_active) || accrualRules[0];
     if (settings) {
-      const carryoverEnabled = typeof settings.carry_over_limit === 'number' && settings.carry_over_limit >= 0;
       const displayUnit = settings.pto_display_unit === 'hours' ? 'hours' : 'days';
       const hoursPerDay =
         settings.hours_per_day && settings.hours_per_day > 0 ? settings.hours_per_day : DEFAULT_HOURS_PER_DAY;
       const hoursPerWeek =
         settings.hours_per_week && settings.hours_per_week > 0 ? settings.hours_per_week : DEFAULT_HOURS_PER_WEEK;
-      const advancedEnabled = carryoverEnabled || hasCustomHourSettings(hoursPerDay, hoursPerWeek);
-      // Use existing carryover limit if set, otherwise use a high value that won't affect balance
-      const initialBalance = settings.initial_balance || 15;
-      const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : initialBalance * 10;
+      const advancedEnabled = hasCustomHourSettings(hoursPerDay, hoursPerWeek);
+      // null means no limit - only set a value if one exists in settings
+      const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : null;
       setLocalSettings((prev) => ({
-        initialBalance,
+        initialBalance: settings.initial_balance || 15,
         asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
         // Only update accrual settings if we have rules, otherwise preserve current UI values
         accrualFrequency: activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency'] || prev.accrualFrequency,
@@ -227,6 +222,15 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
 
   const handleNumericChangeWithUnit = useCallback(
     (field: keyof Pick<LocalPTOSettings, 'initialBalance' | 'accrualAmount' | 'maxCarryover'>, value: string) => {
+      // For maxCarryover, empty string means no limit (null)
+      if (field === 'maxCarryover' && value.trim() === '') {
+        setLocalSettings((prev) => ({
+          ...prev,
+          maxCarryover: null,
+        }));
+        return;
+      }
+
       const parsed = parseFloat(value);
       const numericValue = Number.isFinite(parsed) ? parsed : 0;
       const sourceUnit = fieldUnits[field];
@@ -265,12 +269,15 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
               nextUnit,
               hoursPerDay
             ),
-            maxCarryover: convertBetweenUnits(
-              prevSettings.maxCarryover,
-              prevSettings.displayUnit,
-              nextUnit,
-              hoursPerDay
-            ),
+            // Keep null as null (no limit), otherwise convert
+            maxCarryover: prevSettings.maxCarryover === null
+              ? null
+              : convertBetweenUnits(
+                  prevSettings.maxCarryover,
+                  prevSettings.displayUnit,
+                  nextUnit,
+                  hoursPerDay
+                ),
           };
         });
         lastDisplayUnitRef.current = nextUnit;
@@ -362,8 +369,10 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
 
     // If not authenticated, save to localStorage
     if (!isAuthenticated) {
-      const carryOverLimitValue = localSettings.enableCarryoverLimit ? localSettings.maxCarryover : null;
-      const renewalDateValue = localSettings.enableCarryoverLimit ? localSettings.carryoverResetDate : null;
+      // Only apply carryover limit if a value is set (not null/blank)
+      const hasCarryoverLimit = localSettings.maxCarryover !== null;
+      const carryOverLimitValue = hasCarryoverLimit ? localSettings.maxCarryover : null;
+      const renewalDateValue = hasCarryoverLimit ? localSettings.carryoverResetDate : null;
 
       const settings = {
         initial_balance: localSettings.initialBalance,
@@ -400,8 +409,10 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     // If authenticated, save to database
     startTransition(async () => {
       try {
-        const carryOverLimitValue = localSettings.enableCarryoverLimit ? localSettings.maxCarryover : null;
-        const renewalDateValue = localSettings.enableCarryoverLimit ? localSettings.carryoverResetDate : null;
+        // Only apply carryover limit if a value is set (not null/blank)
+        const hasCarryoverLimit = localSettings.maxCarryover !== null;
+        const carryOverLimitValue = hasCarryoverLimit ? localSettings.maxCarryover : null;
+        const renewalDateValue = hasCarryoverLimit ? localSettings.carryoverResetDate : null;
 
         // Save PTO settings
         const settingsResult = await savePTOSettings({
@@ -510,12 +521,15 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
       fieldUnits.accrualAmount,
       hoursPerDayForDisplay
     ),
-    maxCarryover: convertBetweenUnits(
-      localSettings.maxCarryover,
-      localSettings.displayUnit,
-      fieldUnits.maxCarryover,
-      hoursPerDayForDisplay
-    ),
+    // null means no limit - show empty string in input
+    maxCarryover: localSettings.maxCarryover === null
+      ? ''
+      : convertBetweenUnits(
+          localSettings.maxCarryover,
+          localSettings.displayUnit,
+          fieldUnits.maxCarryover,
+          hoursPerDayForDisplay
+        ),
   };
 
   const accrualUnitLabel = fieldUnits.accrualAmount === 'hours' ? 'hours' : 'days';
@@ -621,10 +635,14 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
                   step="0.5"
                   value={displayValues.maxCarryover}
                   onChange={(event) => handleNumericChangeWithUnit('maxCarryover', event.target.value)}
+                  placeholder="No limit"
                   className="!h-9 pr-16 text-xs"
                 />
                 <UnitBadge unit={fieldUnits.maxCarryover} onToggle={() => toggleFieldUnit('maxCarryover')} />
               </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Leave blank for unlimited carryover
+              </p>
             </div>
 
             <div className="space-y-1.5">
