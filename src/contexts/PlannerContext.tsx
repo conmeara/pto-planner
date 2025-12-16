@@ -537,6 +537,7 @@ interface PlannerContextType {
   countryCode: string;
   isLoadingHolidays: boolean;
   isGeneratingSuggestions: boolean;
+  isInitializing: boolean;
 
   // State setters
   setPlannerData: (data: PlannerData | null) => void;
@@ -633,6 +634,21 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     loadFromLocalStorage<PTOAccrualRule[]>(STORAGE_KEYS.ACCRUAL_RULES, [])
   );
   const [isLoadingHolidays, setIsLoadingHolidays] = useState<boolean>(false);
+  // Start as initialized if user already has holidays (returning user)
+  const [isInitializing, setIsInitializing] = useState<boolean>(() => {
+    // If authenticated user already has holidays, they're a returning user - no init needed
+    if (initialData?.holidays && initialData.holidays.length > 0) {
+      return false;
+    }
+    // Check localStorage for unauthenticated returning users
+    if (typeof window !== 'undefined') {
+      const storedHolidays = loadFromLocalStorage<CustomHoliday[]>(STORAGE_KEYS.HOLIDAYS, []);
+      if (storedHolidays.length > 0) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   // Conflict resolution state
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -1653,47 +1669,134 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
         yearsToPrefetch.push(year);
       }
 
-      for (const year of yearsToPrefetch) {
-        if (cancelled) {
-          break;
-        }
+      // Check which years need to be fetched
+      const yearsToFetch: number[] = [];
+      const existingHolidays = getHolidays();
 
+      for (const year of yearsToPrefetch) {
         const autoLoadKey = `${STORAGE_KEYS.HOLIDAYS}_autoload_${resolvedCountry}_${year}`;
         const alreadyLoaded = localStorage.getItem(autoLoadKey);
-        const existingHolidays = getHolidays();
         const hasYearData = existingHolidays.length > 0 && hasHolidaysForYear(existingHolidays, year);
 
-        if (alreadyLoaded || hasYearData) {
-          continue;
+        if (!alreadyLoaded && !hasYearData) {
+          yearsToFetch.push(year);
+        }
+      }
+
+      // If no years need fetching, mark initialization as complete immediately
+      if (yearsToFetch.length === 0) {
+        if (!cancelled) {
+          setIsInitializing(false);
+        }
+        return;
+      }
+
+      // Fetch all years in parallel and collect results
+      const fetchPromises = yearsToFetch.map(async (year) => {
+        try {
+          const response = await fetch(`/api/holidays?country=${encodeURIComponent(resolvedCountry!)}&year=${year}`);
+          if (!response.ok) {
+            return { year, success: false, holidays: [] };
+          }
+          const payload = await response.json();
+          if (!payload?.success || !Array.isArray(payload.data)) {
+            return { year, success: false, holidays: [] };
+          }
+          return { year, success: true, holidays: payload.data };
+        } catch (error) {
+          console.warn(`[PlannerContext] Failed to fetch holidays for ${year}:`, error);
+          return { year, success: false, holidays: [] };
+        }
+      });
+
+      const results = await Promise.all(fetchPromises);
+
+      if (cancelled) {
+        return;
+      }
+
+      // Batch all holidays together
+      const nowIso = new Date().toISOString();
+      const allNewHolidays: CustomHoliday[] = [];
+      const successfulYears: number[] = [];
+
+      for (const result of results) {
+        if (result.success && result.holidays.length > 0) {
+          successfulYears.push(result.year);
+          for (const holiday of result.holidays) {
+            allNewHolidays.push({
+              id: holiday.id ?? generateHolidayId(),
+              user_id: plannerData?.user?.id ?? 'local',
+              name: holiday.name,
+              date: holiday.date,
+              repeats_yearly: holiday.repeats_yearly ?? false,
+              is_paid_holiday: holiday.is_paid_holiday ?? true,
+              created_at: holiday.created_at ?? nowIso,
+              updated_at: holiday.updated_at ?? nowIso,
+            });
+          }
+        }
+      }
+
+      // Single state update with all holidays
+      if (allNewHolidays.length > 0 && !cancelled) {
+        if (isAuthenticated) {
+          // For authenticated users, batch save to database
+          const addResult = await batchAddHolidays(
+            allNewHolidays.map((holiday) => ({
+              name: holiday.name,
+              date: holiday.date,
+              repeatsYearly: holiday.repeats_yearly,
+              isPaidHoliday: holiday.is_paid_holiday,
+            }))
+          );
+
+          if (addResult.success && addResult.data) {
+            const mergedHolidays = mergeHolidayCollections(
+              existingHolidays,
+              addResult.data,
+              0, // Not replacing by year
+              false,
+            );
+            setPlannerData((prev) => {
+              if (!prev) return prev;
+              return { ...prev, holidays: mergedHolidays };
+            });
+          }
+        } else {
+          // For unauthenticated users, save to localStorage
+          const mergedHolidays = mergeHolidayCollections(
+            existingHolidays,
+            allNewHolidays,
+            0,
+            false,
+          );
+          saveLocalHolidays(mergedHolidays);
         }
 
-        const result = await refreshHolidays(resolvedCountry, {
-          year,
-          replaceExisting: true,
-          persistCountry: true,
-          silent: true,
-        });
-
-        if (cancelled) {
-          break;
-        }
-
-        if (result.success) {
+        // Mark successful years in localStorage
+        for (const year of successfulYears) {
+          const autoLoadKey = `${STORAGE_KEYS.HOLIDAYS}_autoload_${resolvedCountry}_${year}`;
           localStorage.setItem(autoLoadKey, 'true');
         }
+      }
+
+      // Mark initialization as complete
+      if (!cancelled) {
+        setIsInitializing(false);
       }
     };
 
     initializeHolidays().catch((error) => {
-      // This should rarely happen since errors are handled internally,
-      // but we catch here to prevent unhandled promise rejections
       console.error('[PlannerContext] Failed to initialize holidays:', error);
+      setIsInitializing(false);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [detectCountryFromClient, getHolidays, refreshHolidays, setCountryCode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Action: Toggle day selection
   const toggleDaySelection = useCallback(
@@ -1940,7 +2043,11 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
   );
 
   useEffect(() => {
-    generateSuggestions();
+    // Skip suggestion generation during initialization to avoid flickering
+    if (isInitializing) {
+      return;
+    }
+    generateSuggestions({ silent: true });
   }, [
     selectedDays,
     plannerData?.holidays,
@@ -1949,6 +2056,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     localWeekendVersion,
     suggestionPreferences,
     generateSuggestions,
+    isInitializing,
   ]);
 
   // Context value
@@ -1962,6 +2070,7 @@ export function PlannerProvider({ children, initialData }: PlannerProviderProps)
     countryCode,
     isLoadingHolidays,
     isGeneratingSuggestions,
+    isInitializing,
     setPlannerData,
     setSelectedDays,
     setSuggestedDays,
