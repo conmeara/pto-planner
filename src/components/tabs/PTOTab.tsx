@@ -64,6 +64,26 @@ const toDateInputValue = (date: Date): string => {
   return formatDateLocal(date);
 };
 
+/**
+ * Get the last Friday of the previous month.
+ * This is a sensible default for "as of date" since it typically aligns with pay periods.
+ */
+const getLastFridayOfPreviousMonth = (): Date => {
+  const today = new Date();
+  // Go to the first day of the current month
+  const firstOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  // Go back one day to get the last day of the previous month
+  const lastDayOfPrevMonth = new Date(firstOfCurrentMonth.getTime() - 1);
+
+  // Find the last Friday of that month
+  const dayOfWeek = lastDayOfPrevMonth.getDay(); // 0 = Sunday, 5 = Friday
+  const daysToSubtract = (dayOfWeek + 2) % 7; // Days to go back to reach Friday
+  const lastFriday = new Date(lastDayOfPrevMonth);
+  lastFriday.setDate(lastDayOfPrevMonth.getDate() - daysToSubtract);
+
+  return lastFriday;
+};
+
 const getDefaultResetDate = (asOfDate?: string): string => {
   if (asOfDate) {
     const base = parseDateLocal(asOfDate);
@@ -150,7 +170,7 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
     const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : null;
     return {
       initialBalance: settings.initial_balance || 15,
-      asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
+      asOfDate: settings.pto_start_date || formatDateLocal(getLastFridayOfPreviousMonth()),
       accrualFrequency: (activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency']) || 'monthly',
       accrualAmount: activeRule?.accrual_amount ?? 1.25,
       maxCarryover,
@@ -190,7 +210,7 @@ const PTOTab: React.FC<PTOTabProps> = ({ onHeaderActionsChange }) => {
       const maxCarryover = typeof settings.carry_over_limit === 'number' ? settings.carry_over_limit : null;
       setLocalSettings((prev) => ({
         initialBalance: settings.initial_balance || 15,
-        asOfDate: settings.pto_start_date || formatDateLocal(new Date()),
+        asOfDate: settings.pto_start_date || formatDateLocal(getLastFridayOfPreviousMonth()),
         // Only update accrual settings if we have rules, otherwise preserve current UI values
         accrualFrequency: activeRule?.accrual_frequency as LocalPTOSettings['accrualFrequency'] || prev.accrualFrequency,
         accrualAmount: activeRule?.accrual_amount ?? prev.accrualAmount,
