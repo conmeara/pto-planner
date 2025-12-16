@@ -118,6 +118,7 @@ const VirtualizedCalendar: React.FC = () => {
     refreshHolidays,
     getHolidays,
     countryCode,
+    isInitializing,
   } = usePlanner();
   const setNavigationState = useCalendarNavigationDispatch();
 
@@ -216,14 +217,15 @@ const VirtualizedCalendar: React.FC = () => {
   const hasInitializedScrollRef = useRef(false);
 
   useEffect(() => {
-    if (!isMounted) {
+    // Wait until both mounted AND initialization is complete
+    if (!isMounted || isInitializing) {
       return;
     }
 
     const layoutChanged = prevMonthsPerRowRef.current !== monthsPerRow;
     prevMonthsPerRowRef.current = monthsPerRow;
 
-    // On initial mount, scroll to today
+    // On initial mount (after initialization), scroll to today
     if (!hasInitializedScrollRef.current) {
       hasInitializedScrollRef.current = true;
       const id = requestAnimationFrame(() => {
@@ -247,7 +249,7 @@ const VirtualizedCalendar: React.FC = () => {
       });
       return () => cancelAnimationFrame(id);
     }
-  }, [isMounted, todayRow, virtualizer, monthsPerRow, getRowForMonth]);
+  }, [isMounted, isInitializing, todayRow, virtualizer, monthsPerRow, getRowForMonth]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const viewportStart = virtualizer.scrollOffset ?? 0;
@@ -528,12 +530,16 @@ const VirtualizedCalendar: React.FC = () => {
     countryCode,
   ]);
 
-  if (!isMounted) {
+  // Show simple loading state while mounting or initializing data
+  if (!isMounted || isInitializing) {
     return (
       <div className="mx-auto w-full max-w-7xl px-0">
         <div className="overflow-hidden rounded-[32px] border-2 border-border bg-card shadow-sm p-6">
           <div className="flex h-80 items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading calendar...</p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              <span>Loading calendar...</span>
+            </div>
           </div>
         </div>
       </div>
