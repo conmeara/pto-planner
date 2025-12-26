@@ -1,14 +1,10 @@
-import { createClient } from '@/utils/supabase/server';
+import { getCurrentUser } from '@/utils/firebase/auth';
 import { getUserDashboardData } from '@/app/actions/user-actions';
 import PlannerClient from './planner-client';
 
 export default async function Home() {
-  const supabase = await createClient();
-
   // Check if user is authenticated
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   // If authenticated, fetch user data
   let initialData = null;

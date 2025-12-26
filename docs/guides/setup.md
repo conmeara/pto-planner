@@ -1,13 +1,12 @@
 # PTO Planner - Complete Setup Guide
 
-This guide will walk you through setting up the PTO Planner application with Supabase.
+This guide will walk you through setting up the PTO Planner application with Firebase.
 
 ## Prerequisites
 
 - Node.js 18+ installed
 - npm or yarn package manager
-- A Supabase account (free tier works great!)
-- Docker (optional, for local development)
+- A Firebase account (free Spark plan works great!)
 
 ---
 
@@ -17,116 +16,91 @@ This guide will walk you through setting up the PTO Planner application with Sup
 
 ```bash
 # Navigate to project directory
-cd pto-planner-v3
+cd pto-planner
 
 # Install dependencies
 npm install
 ```
 
-### Step 2: Set Up Supabase Project
+### Step 2: Set Up Firebase Project
 
-#### Option A: Using Supabase Cloud (Recommended for Production)
+#### Create a Firebase Project
 
-1. **Create a Supabase Project**
-   - Go to [https://app.supabase.com](https://app.supabase.com)
-   - Click "New Project"
-   - Fill in your project details (name, database password, region)
-   - Wait for your project to be ready (~2 minutes)
+1. **Create a Firebase Project**
+   - Go to [https://console.firebase.google.com](https://console.firebase.google.com)
+   - Click "Create a project" or "Add project"
+   - Fill in your project name
+   - Optionally enable Google Analytics
+   - Wait for your project to be ready
 
-2. **Get Your API Credentials**
-   - In your Supabase project dashboard, go to **Settings** → **API**
-   - Note down:
-     - Project URL (e.g., `https://xxxxxxxxxxxxx.supabase.co`)
-     - `anon` public key (long string starting with `eyJ...`)
+2. **Enable Authentication**
+   - In your Firebase project, go to **Authentication** -> **Get Started**
+   - Enable **Email/Password** sign-in method
+   - Optionally enable **Email link (passwordless sign-in)**
 
-3. **Create Environment File**
-   ```bash
-   # Create .env.local file in the project root
-   cat > .env.local << EOF
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-   EOF
-   ```
-   
-   Replace the values with your actual credentials.
+3. **Create Firestore Database**
+   - Go to **Firestore Database** -> **Create database**
+   - Choose "Start in production mode"
+   - Select your preferred region
+   - Click **Enable**
 
-4. **Apply Database Migrations**
-   
-   **Method 1: Using Supabase Dashboard (Easiest)**
-   - Go to your Supabase project dashboard
-   - Navigate to **SQL Editor**
-   - Create a new query
-   - Copy the contents of `supabase/migrations/20240101000000_initial_schema.sql`
-   - Paste and click "Run"
-   - Repeat for `20240102000000_create_views.sql` and `20240103000000_create_functions.sql`
-   - (Optional) Run `supabase/seed.sql` for test data
+4. **Get Your Web App Configuration**
+   - Go to **Project Settings** (gear icon) -> **General**
+   - Scroll to "Your apps" section
+   - Click **Add app** and choose **Web** (</>)
+   - Register your app with a nickname
+   - Copy the Firebase SDK configuration
 
-   **Method 2: Using Supabase CLI**
-   ```bash
-   # Install Supabase CLI globally
-   npm install -g supabase
-   
-   # Login to Supabase
-   supabase login
-   
-   # Link your project (get project ref from dashboard URL)
-   supabase link --project-ref your-project-ref
-   
-   # Push migrations to your database
-   supabase db push
-   ```
+5. **Get Service Account Credentials**
+   - Go to **Project Settings** -> **Service accounts**
+   - Click **Generate new private key**
+   - Save the downloaded JSON file securely
 
-#### Option B: Using Local Supabase (For Development)
+### Step 3: Configure Environment Variables
 
-1. **Install Supabase CLI**
-   ```bash
-   npm install -g supabase
-   ```
+Create `.env.local` in the project root:
 
-2. **Start Local Supabase**
-   ```bash
-   # Start local Supabase (requires Docker)
-   npm run supabase:start
-   ```
-   
-   This will:
-   - Start a local PostgreSQL database
-   - Start Supabase Studio (admin UI) at http://localhost:54323
-   - Start local Auth and Storage services
-   - Display your local API credentials
+```bash
+# Firebase Client Configuration (from Firebase SDK config)
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
+NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 
-3. **Update Environment Variables**
-   ```bash
-   cat > .env.local << EOF
-   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key-from-start-command>
-   EOF
-   ```
+# Firebase Admin SDK Configuration (from service account JSON)
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour-Private-Key-Here\n-----END PRIVATE KEY-----\n"
+```
 
-4. **Apply Migrations Locally**
-   ```bash
-   # Migrations are auto-applied when you run supabase start
-   # Or manually reset and apply:
-   npm run supabase:reset
-   ```
+**Important**: The `FIREBASE_PRIVATE_KEY` must include the `\n` newline characters and be wrapped in double quotes.
 
-### Step 3: Verify Database Setup
+### Step 4: Deploy Firestore Security Rules
 
-After applying migrations, you should have these tables in your database:
+**Method 1: Using Firebase Console (Easiest)**
+- Go to your Firebase project dashboard
+- Navigate to **Firestore Database** -> **Rules**
+- Copy the contents of `firestore.rules` from the project
+- Paste and click "Publish"
 
-- ✅ `users`
-- ✅ `pto_settings`
-- ✅ `pto_accrual_rules`
-- ✅ `pto_transactions`
-- ✅ `pto_days`
-- ✅ `custom_holidays`
-- ✅ `weekend_config`
+**Method 2: Using Firebase CLI**
+```bash
+# Install Firebase CLI globally
+npm install -g firebase-tools
 
-You can verify in:
-- **Supabase Cloud**: Dashboard → Table Editor
-- **Local**: http://localhost:54323 → Table Editor
+# Login to Firebase
+firebase login
 
-### Step 4: Run the Application
+# Initialize Firebase in your project (select Firestore)
+firebase init firestore
+
+# Deploy rules
+firebase deploy --only firestore
+```
+
+### Step 5: Run the Application
 
 ```bash
 # Start the development server
@@ -141,27 +115,35 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Database Schema
 
-The application uses a comprehensive schema designed for PTO tracking:
+The application uses Firestore with the following collections:
 
-- **User Management**: Extended Supabase Auth with custom profiles
-- **PTO Configuration**: Flexible settings per user
-- **Accrual System**: Support for multiple accrual frequencies
-- **Transaction History**: Complete audit trail of PTO changes
-- **Custom Holidays**: User-defined holidays and paid time off
-- **Weekend Config**: Configurable weekend days per user
+- **users**: Extended Firebase Auth with custom profiles
+- **ptoSettings**: Flexible settings per user
+- **ptoAccrualRules**: Support for multiple accrual frequencies
+- **ptoTransactions**: Complete audit trail of PTO changes
+- **ptoDays**: Individual PTO day records
+- **customHolidays**: User-defined holidays and paid time off
+- **weekendConfig**: Configurable weekend days per user
 
 See [database-schema.md](../architecture/database-schema.md) for detailed documentation.
 
-### Row Level Security (RLS)
+### Security Rules
 
-All tables have RLS enabled to ensure users can only access their own data. The policies are configured in the initial migration.
+All collections have security rules that ensure users can only access their own data. The rules are defined in `firestore.rules` at the project root.
 
 ### Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | ✅ Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | ✅ Yes |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase API key (public) | Yes |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Auth domain | Yes |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase project ID | Yes |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket | Yes |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID | Yes |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase app ID | Yes |
+| `FIREBASE_PROJECT_ID` | Firebase project ID (server) | Yes |
+| `FIREBASE_CLIENT_EMAIL` | Service account email | Yes |
+| `FIREBASE_PRIVATE_KEY` | Service account private key | Yes |
 
 ---
 
@@ -172,19 +154,10 @@ All tables have RLS enabled to ensure users can only access their own data. The 
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 
-### Supabase CLI Commands
-- `npm run supabase:install` - Install Supabase CLI globally
-- `npm run supabase:login` - Login to Supabase
-- `npm run supabase:start` - Start local Supabase instance
-- `npm run supabase:stop` - Stop local Supabase
-- `npm run supabase:status` - Check local Supabase status
-- `npm run supabase:link` - Link to cloud project
-- `npm run supabase:push` - Push migrations to cloud
-- `npm run supabase:reset` - Reset local database
-- `npm run supabase:types` - Generate TypeScript types
-
-### Setup Shortcuts
-- `npm run setup:local` - Complete local setup (start + migrate + seed)
+### Firebase CLI Commands
+- `firebase login` - Login to Firebase
+- `firebase deploy --only firestore` - Deploy Firestore rules and indexes
+- `firebase emulators:start` - Start local Firebase emulators
 
 ---
 
@@ -192,38 +165,32 @@ All tables have RLS enabled to ensure users can only access their own data. The 
 
 ### Issue: "Invalid API key" or connection errors
 
-**Solution**: 
+**Solution**:
 - Verify your environment variables in `.env.local`
-- Make sure there are no extra spaces or quotes
+- Make sure there are no extra spaces or quotes around values
+- Check that the private key has proper `\n` newline characters
 - Restart your dev server after changing `.env.local`
 
-### Issue: Tables don't exist
+### Issue: Permission denied errors
 
-**Solution**: 
-- Make sure you ran all migration files in order
-- Check Supabase dashboard → Database → Tables
-- Try running migrations manually via SQL Editor
+**Solution**:
+- Make sure Firestore security rules are deployed
+- Check that you're authenticated
+- Verify the user ID matches in security rules
 
 ### Issue: Authentication not working
 
-**Solution**: 
-- Verify Auth is enabled in Supabase dashboard
-- Check your site URL in Supabase → Authentication → URL Configuration
-- Make sure your `.env.local` has the correct keys
+**Solution**:
+- Verify Email/Password auth is enabled in Firebase Console
+- Check your authorized domains in Authentication -> Settings
+- Make sure your `.env.local` has the correct API key
 
-### Issue: RLS errors (e.g., "new row violates row-level security policy")
+### Issue: "Missing or insufficient permissions"
 
-**Solution**: 
-- Make sure you're authenticated
-- Check that RLS policies are properly created (run migrations)
-- Verify `auth.uid()` matches your user ID in the database
-
-### Issue: Local Supabase won't start
-
-**Solution**: 
-- Make sure Docker is running
-- Check ports 54321-54326 aren't already in use
-- Try `supabase stop` then `supabase start` again
+**Solution**:
+- Deploy the Firestore security rules from `firestore.rules`
+- Make sure the authenticated user ID matches the `user_id` field in documents
+- Check Firebase Console -> Firestore -> Rules for any syntax errors
 
 ---
 
@@ -245,6 +212,6 @@ For detailed product features and requirements, see [prd.md](../product/prd.md).
 - **Documentation**: Browse the `/docs` folder for additional guides
 - **Database Schema**: See [database-schema.md](../architecture/database-schema.md)
 - **Product Requirements**: See [prd.md](../product/prd.md)
-- **Supabase Docs**: [https://supabase.com/docs](https://supabase.com/docs)
+- **Firebase Docs**: [https://firebase.google.com/docs](https://firebase.google.com/docs)
 
-Happy PTO planning! 🏖️
+Happy PTO planning!

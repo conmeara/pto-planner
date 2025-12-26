@@ -1,18 +1,14 @@
 import { signOutAction } from "@/app/actions";
-import { hasEnvVars } from "@/utils/supabase/check-env-vars";
+import { hasFirebaseConfig } from "@/utils/firebase/config";
+import { getCurrentUser } from "@/utils/firebase/auth";
 import Link from "next/link";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { createClient } from "@/utils/supabase/server";
 
 export default async function AuthButton() {
-  const supabase = await createClient();
+  const user = await getCurrentUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!hasEnvVars) {
+  if (!hasFirebaseConfig) {
     return (
       <>
         <div className="flex gap-4 items-center">
@@ -21,7 +17,7 @@ export default async function AuthButton() {
               variant={"default"}
               className="font-normal pointer-events-none"
             >
-              Please update .env.local file with anon key and url
+              Please update .env.local with Firebase config
             </Badge>
           </div>
           <div className="flex gap-2">
@@ -48,6 +44,7 @@ export default async function AuthButton() {
       </>
     );
   }
+
   return user ? (
     <div className="flex items-center gap-4">
       Hey, {user.email}!

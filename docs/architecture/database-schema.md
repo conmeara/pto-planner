@@ -1,11 +1,11 @@
 # PTO Planner Database Schema
 
-## Entity Relationship Diagram
+## Collections Overview (Firestore)
 
 ```
 users
 +----------------+
-| id (PK)        |
+| id (Document)  |
 | email          |
 | full_name      |
 | created_at     |
@@ -14,10 +14,10 @@ users
         |
         | 1:1
         v
-pto_settings
+ ptoSettings
 +----------------------+
-| id (PK)              |
-| user_id (FK)         |
+| id (Document)        |
+| user_id              |
 | pto_start_date       |
 | initial_balance      |
 | carry_over_limit     |
@@ -36,10 +36,10 @@ pto_settings
   +-----+------+----------+
   |            |          |
   v            v          v
-pto_accrual_rules    pto_days      custom_holidays
+ptoAccrualRules    ptoDays      customHolidays
 +------------------+ +---------------+ +------------------+
-| id (PK)          | | id (PK)       | | id (PK)          |
-| user_id (FK)     | | user_id (FK)  | | user_id (FK)     |
+| id (Document)    | | id (Document) | | id (Document)    |
+| user_id          | | user_id       | | user_id          |
 | name             | | date          | | name             |
 | accrual_amount   | | amount        | | date             |
 | accrual_frequency| | status        | | repeats_yearly   |
@@ -50,11 +50,11 @@ pto_accrual_rules    pto_days      custom_holidays
 | created_at       |
 | updated_at       |
 +------------------+
-       
-pto_transactions        weekend_config
+
+ptoTransactions        weekendConfig
 +-------------------+   +------------------+
-| id (PK)           |   | id (PK)          |
-| user_id (FK)      |   | user_id (FK)     |
+| id (Document)     |   | id (Document)    |
+| user_id           |   | user_id          |
 | transaction_date  |   | day_of_week      |
 | amount            |   | is_weekend       |
 | transaction_type  |   | created_at       |
@@ -64,20 +64,20 @@ pto_transactions        weekend_config
 +-------------------+
 ```
 
-## Table Descriptions
+## Collection Descriptions
 
 ### users
-Extends Supabase Auth users to store additional user information.
-- **id**: Primary key, UUID reference to auth.users
+Stores user profile information, linked to Firebase Auth.
+- **id**: Document ID, matches Firebase Auth UID
 - **email**: User's email address
 - **full_name**: User's full name
 - **created_at**: Timestamp when record was created
 - **updated_at**: Timestamp when record was last updated
 
-### pto_settings
+### ptoSettings
 Stores PTO configuration settings for each user.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **pto_start_date**: Date from which PTO tracking begins
 - **initial_balance**: Initial PTO balance when account is created
 - **carry_over_limit**: Maximum amount of PTO that can be carried over to the next year
@@ -88,10 +88,10 @@ Stores PTO configuration settings for each user.
 - **hours_per_day**: Number of work hours in a standard day
 - **hours_per_week**: Number of hours the user works across a typical week
 
-### pto_accrual_rules
+### ptoAccrualRules
 Defines how PTO accrues over time for a user.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **name**: Name of the accrual rule
 - **accrual_amount**: Amount of PTO accrued each period
 - **accrual_frequency**: How often PTO accrues ('daily', 'weekly', 'biweekly', 'monthly', 'yearly')
@@ -100,56 +100,51 @@ Defines how PTO accrues over time for a user.
 - **end_date**: Optional date when the rule stops being effective
 - **is_active**: Whether the rule is currently active
 
-### pto_transactions
+### ptoTransactions
 Records all changes to a user's PTO balance.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **transaction_date**: Date when the transaction occurred
 - **amount**: Amount of PTO (positive for accrual, negative for usage)
 - **transaction_type**: Type of transaction ('accrual', 'usage', 'adjustment', 'expiration', 'carry-over')
 - **description**: Optional description of the transaction
-- **reference_id**: Optional reference to related entity (e.g., PTO day UUID)
+- **reference_id**: Optional reference to related entity (e.g., PTO day document ID)
 
-### pto_days
+### ptoDays
 Stores individual PTO days requested by users.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **date**: Date of PTO
 - **amount**: Amount of PTO used on this day
 - **status**: Status of the PTO day ('planned', 'approved', 'taken', 'cancelled')
 - **description**: Optional reason or note for the PTO day
 
-### custom_holidays
+### customHolidays
 Stores user-defined holidays.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **name**: Name of the holiday
 - **date**: Date of the holiday
 - **repeats_yearly**: Whether the holiday repeats every year
 - **is_paid_holiday**: Whether it's a paid holiday (doesn't count against PTO)
 
-### weekend_config
+### weekendConfig
 Defines which days of the week are considered weekends for a user.
-- **id**: Primary key, UUID
-- **user_id**: Foreign key to users table
+- **id**: Document ID
+- **user_id**: Reference to user's Firebase Auth UID
 - **day_of_week**: Day of week (0=Sunday to 6=Saturday)
 - **is_weekend**: Whether the day is treated as a weekend
 
 ## Key Features
 
-1. **User-centric design**: All tables are linked to the user table, enabling multi-tenancy.
+1. **User-centric design**: All collections are linked via user_id, enabling multi-tenancy.
 2. **Flexible PTO accrual**: Supports various accrual frequencies and rules.
 3. **Detailed transaction history**: All PTO balance changes are recorded with timestamps and descriptions.
 4. **Custom weekend configuration**: Users can define which days count as weekends.
 5. **Custom holidays**: Support for both repeating and one-time holidays.
-6. **Row Level Security**: All tables implement RLS to ensure users can only access their own data.
-7. **Efficient indexing**: Indexes on frequently queried columns for better performance.
-
-## Database Triggers
-
-1. **update_updated_at_column()**: Updates the `updated_at` timestamp when records are modified.
-2. **insert_default_weekend_config()**: Creates default weekend configuration (Saturday and Sunday) when a new user is added.
+6. **Security Rules**: All collections implement Firestore security rules to ensure users can only access their own data.
+7. **Composite Indexes**: Indexes configured for frequently queried fields.
 
 ## Security Model
 
-The database employs Supabase Row Level Security (RLS) policies to ensure that users can only access their own data. All tables have RLS enabled with policies that filter data based on the authenticated user ID. 
+The database employs Firestore Security Rules to ensure that users can only access their own data. All collections have rules that filter data based on the authenticated user ID from Firebase Auth. See `firestore.rules` for the complete security rules configuration.
