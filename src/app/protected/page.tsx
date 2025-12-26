@@ -1,14 +1,9 @@
-import FetchDataSteps from "@/components/tutorial/fetch-data-steps";
-import { createClient } from "@/utils/supabase/server";
+import { getCurrentUser } from "@/utils/firebase/auth";
 import { InfoIcon } from "lucide-react";
 import { redirect } from "next/navigation";
 
 export default async function ProtectedPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return redirect("/sign-in");
@@ -30,8 +25,10 @@ export default async function ProtectedPage() {
         </pre>
       </div>
       <div>
-        <h2 className="font-bold text-2xl mb-4">Next steps</h2>
-        <FetchDataSteps />
+        <h2 className="font-bold text-2xl mb-4">Welcome!</h2>
+        <p className="text-muted-foreground">
+          You are now signed in with Firebase. Your PTO data will be synced across devices.
+        </p>
       </div>
     </div>
   );

@@ -5,11 +5,11 @@ Structured references for working on PTO Planner. Files are grouped by purpose s
 ## Guides
 
 - [guides/quickstart.md](guides/quickstart.md) — run the app locally in just a few steps.
-- [guides/setup.md](guides/setup.md) — comprehensive environment, Supabase, and troubleshooting guide.
+- [guides/setup.md](guides/setup.md) — comprehensive environment, Firebase, and troubleshooting guide.
 
 ## Architecture
 
-- [architecture/database-schema.md](architecture/database-schema.md) — ERD, table descriptions, and RLS overview.
+- [architecture/database-schema.md](architecture/database-schema.md) — Firestore collections, document structure, and security rules overview.
 - [architecture/strategy-algorithms.md](architecture/strategy-algorithms.md) — deep dive into the PTO suggestion engine and supporting components.
 
 ## Product

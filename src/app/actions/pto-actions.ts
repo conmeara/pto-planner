@@ -1,12 +1,16 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { PTODaySchema, type ActionResult, type PTODay } from '@/types';
+import { getCurrentUser } from '@/utils/firebase/auth';
+import { getAdminDb } from '@/utils/firebase/admin';
+import {
+  getPtoDaysCollection,
+  convertPtoDay,
+} from '@/utils/firebase/firestore-admin';
 
 /**
  * Add a new PTO day for the current user
- * Uses the database RPC function for proper transaction handling
  */
 export async function addPTODay(
   date: string,
@@ -22,32 +26,47 @@ export async function addPTODay(
       description,
     });
 
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call database function to add PTO day
-    const { data, error } = await supabase.rpc('add_pto_day', {
-      p_user_id: user.id,
-      p_date: validatedInput.date,
-      p_amount: validatedInput.amount,
-      p_status: validatedInput.status,
-      p_description: validatedInput.description || null,
-    });
+    const now = new Date().toISOString();
+    const ptoDaysCollection = getPtoDaysCollection();
 
-    if (error) {
-      console.error('Error adding PTO day:', error);
-      return { success: false, error: error.message };
+    // Check if PTO day already exists for this date
+    const existingDay = await ptoDaysCollection
+      .where('user_id', '==', authUser.uid)
+      .where('date', '==', validatedInput.date)
+      .limit(1)
+      .get();
+
+    if (!existingDay.empty) {
+      return { success: false, error: 'PTO day already exists for this date' };
     }
 
-    // Revalidate the dashboard to show updated data
+    // Add new PTO day
+    const docRef = ptoDaysCollection.doc();
+    await docRef.set({
+      user_id: authUser.uid,
+      date: validatedInput.date,
+      amount: validatedInput.amount,
+      status: validatedInput.status,
+      description: validatedInput.description || null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const newDoc = await docRef.get();
+    const ptoDay = convertPtoDay(newDoc);
+
+    if (!ptoDay) {
+      return { success: false, error: 'Failed to create PTO day' };
+    }
+
     revalidatePath('/dashboard');
 
-    return { success: true, data };
+    return { success: true, data: ptoDay };
   } catch (error) {
     console.error('Error in addPTODay:', error);
     if (error instanceof Error) {
@@ -59,30 +78,27 @@ export async function addPTODay(
 
 /**
  * Delete a PTO day
- * Uses the database RPC function for proper cleanup and transaction reversal
  */
 export async function deletePTODay(ptoDate: string): Promise<ActionResult> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call database function to delete PTO day
-    const { error } = await supabase.rpc('delete_pto_day', {
-      p_user_id: user.id,
-      p_date: ptoDate,
-    });
+    const ptoDaysCollection = getPtoDaysCollection();
+    const existingDay = await ptoDaysCollection
+      .where('user_id', '==', authUser.uid)
+      .where('date', '==', ptoDate)
+      .limit(1)
+      .get();
 
-    if (error) {
-      console.error('Error deleting PTO day:', error);
-      return { success: false, error: error.message };
+    if (existingDay.empty) {
+      return { success: false, error: 'PTO day not found' };
     }
 
-    // Revalidate the dashboard
+    await existingDay.docs[0].ref.delete();
+
     revalidatePath('/dashboard');
 
     return { success: true, data: undefined };
@@ -97,34 +113,34 @@ export async function deletePTODay(ptoDate: string): Promise<ActionResult> {
 
 /**
  * Update PTO day status
- * Transitions between planned → approved → taken
  */
 export async function updatePTODayStatus(
   ptoDate: string,
   newStatus: 'planned' | 'approved' | 'taken' | 'cancelled'
 ): Promise<ActionResult> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call database function to update status
-    const { error } = await supabase.rpc('update_pto_day_status', {
-      p_user_id: user.id,
-      p_date: ptoDate,
-      p_new_status: newStatus,
-    });
+    const now = new Date().toISOString();
+    const ptoDaysCollection = getPtoDaysCollection();
+    const existingDay = await ptoDaysCollection
+      .where('user_id', '==', authUser.uid)
+      .where('date', '==', ptoDate)
+      .limit(1)
+      .get();
 
-    if (error) {
-      console.error('Error updating PTO day status:', error);
-      return { success: false, error: error.message };
+    if (existingDay.empty) {
+      return { success: false, error: 'PTO day not found' };
     }
 
-    // Revalidate the dashboard
+    await existingDay.docs[0].ref.update({
+      status: newStatus,
+      updated_at: now,
+    });
+
     revalidatePath('/dashboard');
 
     return { success: true, data: undefined };
@@ -139,43 +155,38 @@ export async function updatePTODayStatus(
 
 /**
  * Get all PTO days for the current user
- * Optionally filter by date range
  */
 export async function getPTODays(
   startDate?: string,
   endDate?: string
 ): Promise<ActionResult<PTODay[]>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    let query = supabase
-      .from('pto_days')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: true });
+    let query = getPtoDaysCollection()
+      .where('user_id', '==', authUser.uid)
+      .orderBy('date', 'asc');
 
-    // Apply date filters if provided
+    // Note: Firestore doesn't support multiple inequality filters on different fields
+    // So we filter in code after fetching
+    const snapshot = await query.get();
+
+    let ptoDays = snapshot.docs
+      .map(doc => convertPtoDay(doc))
+      .filter((day): day is NonNullable<typeof day> => day !== null);
+
+    // Apply date filters in code
     if (startDate) {
-      query = query.gte('date', startDate);
+      ptoDays = ptoDays.filter(d => d.date >= startDate);
     }
     if (endDate) {
-      query = query.lte('date', endDate);
+      ptoDays = ptoDays.filter(d => d.date <= endDate);
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching PTO days:', error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, data: data as PTODay[] };
+    return { success: true, data: ptoDays };
   } catch (error) {
     console.error('Error in getPTODays:', error);
     if (error instanceof Error) {
@@ -186,17 +197,14 @@ export async function getPTODays(
 }
 
 /**
- * Batch add PTO days (useful for applying suggested PTO)
+ * Batch add PTO days
  */
 export async function batchAddPTODays(
   days: Array<{ date: string; amount: number; description?: string }>
 ): Promise<ActionResult<PTODay[]>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
@@ -204,42 +212,54 @@ export async function batchAddPTODays(
       return { success: true, data: [] };
     }
 
-    // Add all days
-    const results: PTODay[] = [];
-    const failures: string[] = [];
+    const now = new Date().toISOString();
+    const db = getAdminDb();
+    const ptoDaysCollection = getPtoDaysCollection();
 
-    for (const day of days) {
-      const { data, error } = await supabase.rpc('add_pto_day', {
-        p_user_id: user.id,
-        p_date: day.date,
-        p_amount: day.amount,
-        p_status: 'planned',
-        p_description: day.description || 'Suggested PTO',
+    // Get existing dates to avoid duplicates
+    const existingDays = await ptoDaysCollection
+      .where('user_id', '==', authUser.uid)
+      .get();
+    const existingDates = new Set(existingDays.docs.map(doc => doc.data().date));
+
+    // Filter out duplicates
+    const newDays = days.filter(d => !existingDates.has(d.date));
+
+    if (newDays.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Add new days in batch
+    const batch = db.batch();
+    const docRefs: FirebaseFirestore.DocumentReference[] = [];
+
+    for (const day of newDays) {
+      const docRef = ptoDaysCollection.doc();
+      docRefs.push(docRef);
+      batch.set(docRef, {
+        user_id: authUser.uid,
+        date: day.date,
+        amount: day.amount,
+        status: 'planned',
+        description: day.description || 'Suggested PTO',
+        created_at: now,
+        updated_at: now,
       });
+    }
 
-      if (error) {
-        console.error('Error adding PTO day:', error);
-        failures.push(day.date);
-        continue;
-      }
+    await batch.commit();
 
-      if (data) {
-        results.push(data);
+    // Fetch the created documents
+    const results: PTODay[] = [];
+    for (const docRef of docRefs) {
+      const doc = await docRef.get();
+      const ptoDay = convertPtoDay(doc);
+      if (ptoDay) {
+        results.push(ptoDay);
       }
     }
 
-    // Revalidate the dashboard
     revalidatePath('/dashboard');
-
-    // Return failure if all items failed
-    if (failures.length > 0 && results.length === 0) {
-      return { success: false, error: `Failed to add all ${failures.length} PTO days` };
-    }
-
-    // Log partial failures for debugging (caller can compare input/output lengths)
-    if (failures.length > 0) {
-      console.warn(`Partial batch add: ${results.length} succeeded, ${failures.length} failed (dates: ${failures.join(', ')})`);
-    }
 
     return { success: true, data: results };
   } catch (error) {

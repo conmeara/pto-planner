@@ -1,12 +1,16 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { CustomHolidaySchema, type ActionResult, type CustomHoliday } from '@/types';
+import { getCurrentUser } from '@/utils/firebase/auth';
+import { getAdminDb } from '@/utils/firebase/admin';
+import {
+  getCustomHolidaysCollection,
+  convertCustomHoliday,
+} from '@/utils/firebase/firestore-admin';
 
 /**
  * Add a custom holiday for the current user
- * Uses the database RPC function
  */
 export async function addCustomHoliday(
   name: string,
@@ -23,36 +27,35 @@ export async function addCustomHoliday(
       is_paid_holiday: isPaidHoliday,
     });
 
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call database function to add custom holiday
-    const { data, error } = await supabase
-      .from('custom_holidays')
-      .insert({
-        user_id: user.id,
-        name,
-        date,
-        repeats_yearly: repeatsYearly,
-        is_paid_holiday: isPaidHoliday,
-      })
-      .select()
-      .single();
+    const now = new Date().toISOString();
+    const holidaysCollection = getCustomHolidaysCollection();
 
-    if (error) {
-      console.error('Error adding custom holiday:', error);
-      return { success: false, error: error.message };
+    const docRef = holidaysCollection.doc();
+    await docRef.set({
+      user_id: authUser.uid,
+      name,
+      date,
+      repeats_yearly: repeatsYearly,
+      is_paid_holiday: isPaidHoliday,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const newDoc = await docRef.get();
+    const holiday = convertCustomHoliday(newDoc);
+
+    if (!holiday) {
+      return { success: false, error: 'Failed to create holiday' };
     }
 
-    // Revalidate the dashboard
     revalidatePath('/dashboard');
 
-    return { success: true, data };
+    return { success: true, data: holiday };
   } catch (error) {
     console.error('Error in addCustomHoliday:', error);
     if (error instanceof Error) {
@@ -71,26 +74,27 @@ export async function deleteCustomHoliday(holidayId: string): Promise<ActionResu
       return { success: false, error: 'Holiday ID is required' };
     }
 
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const { error } = await supabase
-      .from('custom_holidays')
-      .delete()
-      .eq('id', holidayId.trim())
-      .eq('user_id', user.id);
+    const holidaysCollection = getCustomHolidaysCollection();
+    const holidayRef = holidaysCollection.doc(holidayId.trim());
+    const holidayDoc = await holidayRef.get();
 
-    if (error) {
-      console.error('Error deleting custom holiday:', error);
-      return { success: false, error: error.message };
+    if (!holidayDoc.exists) {
+      return { success: false, error: 'Holiday not found' };
     }
 
-    // Revalidate the dashboard
+    // Verify ownership
+    const holidayData = holidayDoc.data();
+    if (holidayData?.user_id !== authUser.uid) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    await holidayRef.delete();
+
     revalidatePath('/dashboard');
 
     return { success: true, data: undefined };
@@ -108,35 +112,30 @@ export async function deleteCustomHoliday(holidayId: string): Promise<ActionResu
  */
 export async function getCustomHolidays(year?: number): Promise<ActionResult<CustomHoliday[]>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    let query = supabase
-      .from('custom_holidays')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: true });
+    const holidaysCollection = getCustomHolidaysCollection();
+    let query = holidaysCollection
+      .where('user_id', '==', authUser.uid)
+      .orderBy('date', 'asc');
+
+    const snapshot = await query.get();
+
+    let holidays = snapshot.docs
+      .map(doc => convertCustomHoliday(doc))
+      .filter((h): h is NonNullable<typeof h> => h !== null);
 
     // Filter by year if provided
     if (year) {
       const startDate = `${year}-01-01`;
       const endDate = `${year}-12-31`;
-      query = query.gte('date', startDate).lte('date', endDate);
+      holidays = holidays.filter(h => h.date >= startDate && h.date <= endDate);
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching custom holidays:', error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, data: data as CustomHoliday[] };
+    return { success: true, data: holidays };
   } catch (error) {
     console.error('Error in getCustomHolidays:', error);
     if (error instanceof Error) {
@@ -148,47 +147,56 @@ export async function getCustomHolidays(year?: number): Promise<ActionResult<Cus
 
 /**
  * Batch add holidays from external API
- * Useful when importing country-specific holidays
  */
 export async function batchAddHolidays(
   holidays: Array<{ name: string; date: string; repeatsYearly?: boolean; isPaidHoliday?: boolean }>
 ): Promise<ActionResult<CustomHoliday[]>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Add all holidays
     if (holidays.length === 0) {
       return { success: true, data: [] };
     }
 
-    const insertPayload = holidays.map((holiday) => ({
-      user_id: user.id,
-      name: holiday.name,
-      date: holiday.date,
-      repeats_yearly: holiday.repeatsYearly ?? false,
-      is_paid_holiday: holiday.isPaidHoliday ?? true,
-    }));
+    const now = new Date().toISOString();
+    const db = getAdminDb();
+    const holidaysCollection = getCustomHolidaysCollection();
 
-    const { data, error } = await supabase
-      .from('custom_holidays')
-      .insert(insertPayload)
-      .select();
+    const batch = db.batch();
+    const docRefs: FirebaseFirestore.DocumentReference[] = [];
 
-    if (error) {
-      console.error('Error adding holidays:', error);
-      return { success: false, error: error.message };
+    for (const holiday of holidays) {
+      const docRef = holidaysCollection.doc();
+      docRefs.push(docRef);
+      batch.set(docRef, {
+        user_id: authUser.uid,
+        name: holiday.name,
+        date: holiday.date,
+        repeats_yearly: holiday.repeatsYearly ?? false,
+        is_paid_holiday: holiday.isPaidHoliday ?? true,
+        created_at: now,
+        updated_at: now,
+      });
     }
 
-    // Revalidate the dashboard
+    await batch.commit();
+
+    // Fetch the created documents
+    const results: CustomHoliday[] = [];
+    for (const docRef of docRefs) {
+      const doc = await docRef.get();
+      const holiday = convertCustomHoliday(doc);
+      if (holiday) {
+        results.push(holiday);
+      }
+    }
+
     revalidatePath('/dashboard');
 
-    return { success: true, data: (data || []) as CustomHoliday[] };
+    return { success: true, data: results };
   } catch (error) {
     console.error('Error in batchAddHolidays:', error);
     if (error instanceof Error) {
@@ -200,40 +208,41 @@ export async function batchAddHolidays(
 
 /**
  * Clear all holidays for a specific year
- * Useful when refreshing holidays from API
  */
 export async function clearHolidaysForYear(year: number, includeRepeating: boolean = true): Promise<ActionResult> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
-    let query = supabase
-      .from('custom_holidays')
-      .delete()
-      .eq('user_id', user.id)
-      .gte('date', startDate)
-      .lte('date', endDate);
+    const holidaysCollection = getCustomHolidaysCollection();
+    const snapshot = await holidaysCollection
+      .where('user_id', '==', authUser.uid)
+      .get();
 
-    if (!includeRepeating) {
-      query = query.eq('repeats_yearly', false);
+    const db = getAdminDb();
+    const batch = db.batch();
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const holidayDate = data.date;
+
+      // Check if holiday is in the specified year range
+      if (holidayDate >= startDate && holidayDate <= endDate) {
+        // Check if we should skip repeating holidays
+        if (!includeRepeating && data.repeats_yearly) {
+          continue;
+        }
+        batch.delete(doc.ref);
+      }
     }
 
-    const { error } = await query;
+    await batch.commit();
 
-    if (error) {
-      console.error('Error clearing holidays:', error);
-      return { success: false, error: error.message };
-    }
-
-    // Revalidate the dashboard
     revalidatePath('/dashboard');
 
     return { success: true, data: undefined };
@@ -246,15 +255,16 @@ export async function clearHolidaysForYear(year: number, includeRepeating: boole
   }
 }
 
+/**
+ * Update a custom holiday
+ */
 export async function updateCustomHoliday(
   holidayId: string,
   updates: Partial<Pick<CustomHoliday, 'name' | 'date' | 'repeats_yearly' | 'is_paid_holiday'>>
 ): Promise<ActionResult<CustomHoliday>> {
   try {
-    const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
@@ -262,33 +272,46 @@ export async function updateCustomHoliday(
       return { success: false, error: 'Holiday ID is required' };
     }
 
-    const payload: Record<string, unknown> = {};
+    const holidaysCollection = getCustomHolidaysCollection();
+    const holidayRef = holidaysCollection.doc(holidayId);
+    const holidayDoc = await holidayRef.get();
+
+    if (!holidayDoc.exists) {
+      return { success: false, error: 'Holiday not found' };
+    }
+
+    // Verify ownership
+    const holidayData = holidayDoc.data();
+    if (holidayData?.user_id !== authUser.uid) {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
 
     if (updates.name !== undefined) payload.name = updates.name;
     if (updates.date !== undefined) payload.date = updates.date;
     if (updates.repeats_yearly !== undefined) payload.repeats_yearly = updates.repeats_yearly;
     if (updates.is_paid_holiday !== undefined) payload.is_paid_holiday = updates.is_paid_holiday;
 
-    if (Object.keys(payload).length === 0) {
+    if (Object.keys(payload).length === 1) {
+      // Only updated_at, no actual updates
       return { success: false, error: 'No updates provided' };
     }
 
-    const { data, error } = await supabase
-      .from('custom_holidays')
-      .update(payload)
-      .eq('id', holidayId)
-      .eq('user_id', user.id)
-      .select()
-      .single();
+    await holidayRef.update(payload);
 
-    if (error) {
-      console.error('Error updating holiday:', error);
-      return { success: false, error: error.message };
+    const updatedDoc = await holidayRef.get();
+    const holiday = convertCustomHoliday(updatedDoc);
+
+    if (!holiday) {
+      return { success: false, error: 'Failed to fetch updated holiday' };
     }
 
     revalidatePath('/dashboard');
 
-    return { success: true, data: data as CustomHoliday };
+    return { success: true, data: holiday };
   } catch (error) {
     console.error('Error in updateCustomHoliday:', error);
     if (error instanceof Error) {

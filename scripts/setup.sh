@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # PTO Planner - Setup Script
-# This script helps you set up the PTO Planner application with Supabase
+# This script helps you set up the PTO Planner application with Firebase
 
 set -e  # Exit on error
 
@@ -77,102 +77,93 @@ if [ -f ".env.local" ]; then
 fi
 
 if [ ! -f ".env.local" ]; then
-    print_info "Let's set up your Supabase credentials"
+    print_info "Let's set up your Firebase credentials"
     echo ""
-    echo "You can find these in your Supabase Dashboard:"
-    echo "https://app.supabase.com/project/_/settings/api"
+    echo "You can find these in your Firebase Console:"
+    echo "https://console.firebase.google.com/project/_/settings/general/"
     echo ""
-    
-    read -p "Enter your Supabase Project URL: " supabase_url
-    read -p "Enter your Supabase Anon Key: " supabase_anon_key
-    
+    echo "For client-side configuration (from Firebase SDK config):"
+
+    read -p "Enter your Firebase API Key: " firebase_api_key
+    read -p "Enter your Firebase Auth Domain: " firebase_auth_domain
+    read -p "Enter your Firebase Project ID: " firebase_project_id
+    read -p "Enter your Firebase Storage Bucket: " firebase_storage_bucket
+    read -p "Enter your Firebase Messaging Sender ID: " firebase_sender_id
+    read -p "Enter your Firebase App ID: " firebase_app_id
+
+    echo ""
+    echo "For server-side configuration (from Firebase Service Account):"
+    echo "Generate a service account key from:"
+    echo "https://console.firebase.google.com/project/_/settings/serviceaccounts/adminsdk"
+    echo ""
+
+    read -p "Enter your Firebase Client Email (from service account): " firebase_client_email
+    read -p "Enter path to service account private key file (or paste key): " firebase_private_key
+
     cat > .env.local << EOF
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=$supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=$supabase_anon_key
+# Firebase Client Configuration
+NEXT_PUBLIC_FIREBASE_API_KEY=$firebase_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$firebase_auth_domain
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=$firebase_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$firebase_storage_bucket
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$firebase_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=$firebase_app_id
+
+# Firebase Admin SDK Configuration
+FIREBASE_PROJECT_ID=$firebase_project_id
+FIREBASE_CLIENT_EMAIL=$firebase_client_email
+FIREBASE_PRIVATE_KEY=$firebase_private_key
 EOF
-    
+
     print_success ".env.local created"
 fi
 
-# Check Supabase CLI
-print_header "Supabase CLI"
-if ! command_exists supabase; then
-    print_warning "Supabase CLI is not installed"
+# Check Firebase CLI
+print_header "Firebase CLI"
+if ! command_exists firebase; then
+    print_warning "Firebase CLI is not installed"
     read -p "Do you want to install it globally? (y/N): " install_cli
     if [[ $install_cli =~ ^[Yy]$ ]]; then
-        print_info "Installing Supabase CLI..."
-        npm install -g supabase
-        print_success "Supabase CLI installed"
+        print_info "Installing Firebase CLI..."
+        npm install -g firebase-tools
+        print_success "Firebase CLI installed"
     else
-        print_info "Skipping Supabase CLI installation"
-        print_info "You can install it later with: npm install -g supabase"
+        print_info "Skipping Firebase CLI installation"
+        print_info "You can install it later with: npm install -g firebase-tools"
     fi
 else
-    print_success "Supabase CLI detected"
+    print_success "Firebase CLI detected"
 fi
 
-# Ask about database setup
-print_header "Database Setup"
-echo "How do you want to set up your database?"
-echo "1) Local development with Docker (Supabase Local)"
-echo "2) Cloud Supabase project"
-echo "3) I'll do it manually later"
-read -p "Choose an option (1-3): " db_choice
+# Ask about Firestore setup
+print_header "Firestore Setup"
+echo "How do you want to set up your Firestore?"
+echo "1) Deploy Firestore security rules now"
+echo "2) I'll do it manually later"
+read -p "Choose an option (1-2): " db_choice
 
 case $db_choice in
     1)
-        print_info "Setting up local Supabase..."
-        if ! command_exists docker; then
-            print_error "Docker is not installed. Please install Docker Desktop."
-            print_info "Get it from: https://www.docker.com/products/docker-desktop/"
-            exit 1
+        if ! command_exists firebase; then
+            print_error "Firebase CLI is required to deploy rules"
+            print_info "Install it with: npm install -g firebase-tools"
+        else
+            print_info "Logging in to Firebase..."
+            firebase login
+
+            print_info "Deploying Firestore rules and indexes..."
+            firebase deploy --only firestore:rules,firestore:indexes
+
+            print_success "Firestore rules and indexes deployed!"
         fi
-        
-        if ! command_exists supabase; then
-            print_error "Supabase CLI is required for local development"
-            print_info "Install it with: npm install -g supabase"
-            exit 1
-        fi
-        
-        print_info "Starting local Supabase (this may take a few minutes)..."
-        supabase start
-        
-        print_success "Local Supabase is running!"
-        print_info "Studio URL: http://localhost:54323"
-        print_info "API URL: http://localhost:54321"
         ;;
     2)
-        print_info "Cloud setup selected"
-        if command_exists supabase; then
-            read -p "Do you want to link to your Supabase project now? (y/N): " link_project
-            if [[ $link_project =~ ^[Yy]$ ]]; then
-                print_info "Logging in to Supabase..."
-                supabase login
-                
-                read -p "Enter your project reference (from dashboard URL): " project_ref
-                supabase link --project-ref "$project_ref"
-                
-                print_info "Pushing database migrations..."
-                supabase db push
-                
-                print_success "Database migrations applied!"
-            else
-                print_info "You can link later with: supabase link --project-ref YOUR_REF"
-                print_info "Then push migrations with: supabase db push"
-            fi
-        else
-            print_warning "Supabase CLI not available"
-            print_info "Apply migrations manually via Supabase Dashboard → SQL Editor"
-            print_info "Run the SQL files in: supabase/migrations/"
-        fi
-        ;;
-    3)
         print_info "Manual setup selected"
-        print_info "To set up your database later:"
-        echo "  1. Go to your Supabase Dashboard → SQL Editor"
-        echo "  2. Run the migrations in order from: supabase/migrations/"
-        echo "  3. Optionally run: supabase/seed.sql for test data"
+        print_info "To set up Firestore later:"
+        echo "  1. Go to Firebase Console → Firestore Database"
+        echo "  2. Create database in production mode"
+        echo "  3. Deploy rules with: firebase deploy --only firestore"
+        echo "  4. Or copy contents of firestore.rules to the console"
         ;;
 esac
 
@@ -187,7 +178,7 @@ echo "  3. Check out docs/guides/setup.md for more details"
 echo ""
 print_info "Helpful commands:"
 echo "  npm run dev                    - Start dev server"
-echo "  npm run supabase:start        - Start local Supabase"
-echo "  npm run supabase:status       - Check Supabase status"
+echo "  firebase deploy --only firestore - Deploy Firestore rules"
+echo "  firebase emulators:start       - Start local Firebase emulators"
 echo ""
 print_success "Happy PTO planning! 🏖️"

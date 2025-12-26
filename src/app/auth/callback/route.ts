@@ -1,51 +1,48 @@
-import { initializeUserAccount } from "@/app/actions/user-actions";
-import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
+/**
+ * Auth callback route for Firebase
+ *
+ * With Firebase, authentication primarily happens client-side.
+ * This route handles redirects after email link sign-in and
+ * other auth-related callbacks.
+ *
+ * The actual session creation happens via the createSessionAction
+ * server action, which is called from the client after successful
+ * Firebase authentication.
+ */
 export async function GET(request: Request) {
-  // The `/auth/callback` route is required for the server-side auth flow implemented
-  // by the SSR package. It exchanges an auth code for the user's session.
-  // https://supabase.com/docs/guides/auth/server-side/nextjs
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
   const origin = requestUrl.origin;
   const redirectTo = requestUrl.searchParams.get("redirect_to")?.toString();
+  const mode = requestUrl.searchParams.get("mode");
 
-  if (code) {
-    const supabase = await createClient();
-    await supabase.auth.exchangeCodeForSession(code);
+  // Handle different Firebase auth modes
+  if (mode === "signIn") {
+    // Email link sign-in - redirect to a page that will complete the sign-in
+    const emailLink = requestUrl.href;
+    // Encode the email link to pass it to the sign-in page
+    const encodedLink = encodeURIComponent(emailLink);
+    return NextResponse.redirect(`${origin}/sign-in?emailLink=${encodedLink}`);
+  }
 
-    const {
-      data: { user },
-      error: userFetchError,
-    } = await supabase.auth.getUser();
-
-    if (!userFetchError && user) {
-      const { data: existingUser, error: profileError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError && profileError.code !== "PGRST116") {
-        console.error("Failed to load user profile during auth callback:", profileError);
-      }
-
-      if (!existingUser) {
-        const initResult = await initializeUserAccount(user.id, user.email ?? "");
-        if (!initResult.success) {
-          console.error("Failed to initialize user account during auth callback:", initResult.error);
-        }
-      }
-    } else if (userFetchError) {
-      console.error("Failed to fetch authenticated user during auth callback:", userFetchError);
+  if (mode === "resetPassword") {
+    // Password reset - redirect to the reset password page
+    const oobCode = requestUrl.searchParams.get("oobCode");
+    if (oobCode) {
+      return NextResponse.redirect(`${origin}/protected/reset-password?oobCode=${oobCode}`);
     }
   }
 
+  if (mode === "verifyEmail") {
+    // Email verification - redirect to sign-in with success message
+    return NextResponse.redirect(`${origin}/sign-in?verified=true`);
+  }
+
+  // Default redirect
   if (redirectTo) {
     return NextResponse.redirect(`${origin}${redirectTo}`);
   }
 
-  // URL to redirect to after sign up process completes
   return NextResponse.redirect(`${origin}/protected`);
 }
