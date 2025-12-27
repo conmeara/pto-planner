@@ -61,7 +61,7 @@ node_modules/
 tasks.json
 tasks/
 
-# Supabase
-supabase/.temp/
-.branches/
-.temp/
+# Firebase
+.firebase/
+firebase-debug.log
+.firebaserc

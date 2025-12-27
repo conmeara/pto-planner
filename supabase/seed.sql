@@ -1,2 +1,0 @@
--- Seed data for PTO Planner
--- Add your seed data here after creating users through the auth system

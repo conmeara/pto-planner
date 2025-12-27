@@ -1,9 +1,24 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { type ActionResult, type User, type PlannerData } from '@/types';
 import { formatDateLocal } from '@/lib/date-utils';
+import { getCurrentUser } from '@/utils/firebase/auth';
+import { getAdminDb } from '@/utils/firebase/admin';
+import {
+  getUsersCollection,
+  getPtoSettingsCollection,
+  getPtoAccrualRulesCollection,
+  getPtoDaysCollection,
+  getCustomHolidaysCollection,
+  getWeekendConfigCollection,
+  convertUser,
+  convertPtoSettings,
+  convertPtoAccrualRule,
+  convertPtoDay,
+  convertCustomHoliday,
+  convertWeekendConfig,
+} from '@/utils/firebase/firestore-admin';
 
 /**
  * Initialize a new user account
@@ -16,78 +31,94 @@ export async function initializeUserAccount(
   fullName?: string
 ): Promise<ActionResult<User>> {
   try {
-    const supabase = await createClient();
+    const db = getAdminDb();
+    const now = new Date().toISOString();
 
     // Create user record
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .insert({
-        id: userId,
-        email,
-        full_name: fullName || null,
-      })
-      .select()
-      .single();
+    const usersCollection = getUsersCollection();
+    const userRef = usersCollection.doc(userId);
 
-    if (userError) {
-      console.error('Error creating user record:', userError);
-      return { success: false, error: userError.message };
-    }
+    const userData = {
+      email,
+      full_name: fullName || null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    await userRef.set(userData);
 
     // Create default PTO settings
     // Set PTO start date to the Friday of the week that contains the date 2 weeks ago
     const today = new Date();
     const twoWeeksAgo = new Date(today);
     twoWeeksAgo.setDate(today.getDate() - 14);
-    
+
     // Find the Friday of that week (Friday is day 5, where 0 = Sunday)
     const dayOfWeek = twoWeeksAgo.getDay();
     const daysToFriday = (dayOfWeek + 2) % 7; // Calculate days to subtract to get to Friday
     const fridayOfTwoWeeksAgo = new Date(twoWeeksAgo);
     fridayOfTwoWeeksAgo.setDate(twoWeeksAgo.getDate() - daysToFriday);
-    
-    const ptoStartDate = formatDateLocal(fridayOfTwoWeeksAgo);
-    
-    const { error: settingsError } = await supabase
-      .from('pto_settings')
-      .insert({
-        user_id: userId,
-        pto_start_date: ptoStartDate,
-        initial_balance: 15,
-        pto_display_unit: 'days',
-        hours_per_day: 8,
-        allow_negative_balance: false,
-      });
 
-    if (settingsError) {
-      console.error('Error creating default settings:', settingsError);
-      // Don't fail if settings creation fails - user can set up later
-    }
+    const ptoStartDate = formatDateLocal(fridayOfTwoWeeksAgo);
+
+    // Create default PTO settings
+    const ptoSettingsCollection = getPtoSettingsCollection();
+    const settingsRef = ptoSettingsCollection.doc();
+    await settingsRef.set({
+      user_id: userId,
+      pto_start_date: ptoStartDate,
+      initial_balance: 15,
+      carry_over_limit: null,
+      max_balance: null,
+      renewal_date: null,
+      allow_negative_balance: false,
+      pto_display_unit: 'days',
+      hours_per_day: 8,
+      hours_per_week: 40,
+      created_at: now,
+      updated_at: now,
+    });
 
     // Create default accrual rule (monthly, 1.25 days)
-    const { error: accrualError } = await supabase
-      .from('pto_accrual_rules')
-      .insert({
+    const accrualRulesCollection = getPtoAccrualRulesCollection();
+    const accrualRef = accrualRulesCollection.doc();
+    await accrualRef.set({
+      user_id: userId,
+      name: 'Monthly accrual',
+      accrual_amount: 1.25,
+      accrual_frequency: 'monthly',
+      accrual_day: null,
+      effective_date: ptoStartDate,
+      end_date: null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // Create default weekend config (Saturday and Sunday)
+    const weekendConfigCollection = getWeekendConfigCollection();
+    for (let day = 0; day <= 6; day++) {
+      const configRef = weekendConfigCollection.doc();
+      await configRef.set({
         user_id: userId,
-        name: 'Monthly accrual',
-        accrual_amount: 1.25,
-        accrual_frequency: 'monthly',
-        accrual_day: null,
-        effective_date: ptoStartDate,
-        end_date: null,
-        is_active: true,
+        day_of_week: day,
+        is_weekend: day === 0 || day === 6, // Sunday (0) and Saturday (6)
+        created_at: now,
+        updated_at: now,
       });
-
-    if (accrualError) {
-      console.error('Error creating default accrual rule:', accrualError);
-      // Don't fail if accrual rule creation fails - user can set up later
     }
-
-    // Note: Weekend config is created automatically via database trigger
 
     revalidatePath('/dashboard');
 
-    return { success: true, data: userData as User };
+    const user: User = {
+      id: userId,
+      email,
+      full_name: fullName || null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    return { success: true, data: user };
   } catch (error) {
     console.error('Error in initializeUserAccount:', error);
     if (error instanceof Error) {
@@ -103,74 +134,90 @@ export async function initializeUserAccount(
  */
 export async function getUserDashboardData(): Promise<ActionResult<PlannerData>> {
   try {
-    const supabase = await createClient();
-
     // Get current user
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-    if (authError || !authUser) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
+    const userId = authUser.uid;
+
     // Fetch all data in parallel
     const [
-      userResult,
-      settingsResult,
-      ptoDaysResult,
-      holidaysResult,
-      weekendConfigResult,
-      accrualRulesResult,
-      balanceResult,
+      userSnapshot,
+      settingsSnapshot,
+      ptoDaysSnapshot,
+      holidaysSnapshot,
+      weekendConfigSnapshot,
+      accrualRulesSnapshot,
     ] = await Promise.all([
-      supabase.from('users').select('*').eq('id', authUser.id).single(),
-      supabase.from('pto_settings').select('*').eq('user_id', authUser.id).single(),
-      supabase.from('pto_days').select('*').eq('user_id', authUser.id).order('date'),
-      supabase.from('custom_holidays').select('*').eq('user_id', authUser.id).order('date'),
-      supabase.from('weekend_config').select('*').eq('user_id', authUser.id).order('day_of_week'),
-      supabase.from('pto_accrual_rules').select('*').eq('user_id', authUser.id).eq('is_active', true),
-      supabase.from('current_pto_balances').select('*').eq('user_id', authUser.id).single(),
+      getUsersCollection().doc(userId).get(),
+      getPtoSettingsCollection().where('user_id', '==', userId).limit(1).get(),
+      getPtoDaysCollection().where('user_id', '==', userId).orderBy('date').get(),
+      getCustomHolidaysCollection().where('user_id', '==', userId).orderBy('date').get(),
+      getWeekendConfigCollection().where('user_id', '==', userId).orderBy('day_of_week').get(),
+      getPtoAccrualRulesCollection().where('user_id', '==', userId).where('is_active', '==', true).get(),
     ]);
 
     // User record is required - fail if not found
-    if (userResult.error) {
-      console.error('Error fetching user:', userResult.error);
-      return { success: false, error: userResult.error.message };
+    const user = convertUser(userSnapshot);
+    if (!user) {
+      console.error('User not found:', userId);
+      return { success: false, error: 'User not found' };
     }
 
-    // Log errors for other queries but continue (data may be empty for new users)
-    if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
-      console.error('Error fetching settings:', settingsResult.error);
-    }
-    if (ptoDaysResult.error) {
-      console.error('Error fetching PTO days:', ptoDaysResult.error);
-    }
-    if (holidaysResult.error) {
-      console.error('Error fetching holidays:', holidaysResult.error);
-    }
-    if (weekendConfigResult.error) {
-      console.error('Error fetching weekend config:', weekendConfigResult.error);
-    }
-    if (accrualRulesResult.error) {
-      console.error('Error fetching accrual rules:', accrualRulesResult.error);
-    }
-    if (balanceResult.error && balanceResult.error.code !== 'PGRST116') {
-      console.error('Error fetching balance:', balanceResult.error);
-    }
+    // Convert settings
+    const settings = settingsSnapshot.empty
+      ? null
+      : convertPtoSettings(settingsSnapshot.docs[0]);
 
-    // Construct the data object (some fields can be null for new users)
-    // Ensure holiday dates are properly formatted to avoid timezone issues
-    const holidays = (holidaysResult.data || []).map((holiday: any) => ({
-      ...holiday,
-      date: typeof holiday.date === 'string' ? holiday.date : formatDateLocal(new Date(holiday.date)),
-    }));
+    // Convert PTO days
+    const ptoDays = ptoDaysSnapshot.docs
+      .map(doc => convertPtoDay(doc))
+      .filter((day): day is NonNullable<typeof day> => day !== null);
+
+    // Convert holidays and ensure dates are properly formatted
+    const holidays = holidaysSnapshot.docs
+      .map(doc => convertCustomHoliday(doc))
+      .filter((h): h is NonNullable<typeof h> => h !== null)
+      .map(holiday => ({
+        ...holiday,
+        date: typeof holiday.date === 'string' ? holiday.date : formatDateLocal(new Date(holiday.date)),
+      }));
+
+    // Convert weekend config
+    const weekendConfig = weekendConfigSnapshot.docs
+      .map(doc => convertWeekendConfig(doc))
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    // Convert accrual rules
+    const accrualRules = accrualRulesSnapshot.docs
+      .map(doc => convertPtoAccrualRule(doc))
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    // Calculate current balance
+    // In Firestore, we don't have database views, so we calculate on the fly
+    const totalAccrued = settings?.initial_balance ?? 0;
+    const totalUsed = ptoDays
+      .filter(d => d.status !== 'cancelled')
+      .reduce((sum, d) => sum + d.amount, 0);
+
+    const currentBalance = {
+      user_id: userId,
+      current_balance: totalAccrued - totalUsed,
+      total_accrued: totalAccrued,
+      total_used: totalUsed,
+      total_adjustments: 0,
+    };
 
     const data: PlannerData = {
-      user: userResult.data as User,
-      settings: settingsResult.data || null,
-      ptoDays: ptoDaysResult.data || [],
+      user,
+      settings,
+      ptoDays,
       holidays,
-      weekendConfig: weekendConfigResult.data || [],
-      accrualRules: accrualRulesResult.data || [],
-      currentBalance: balanceResult.data || null,
+      weekendConfig,
+      accrualRules,
+      currentBalance,
     };
 
     return { success: true, data };
@@ -190,29 +237,30 @@ export async function updateUserProfile(
   fullName: string
 ): Promise<ActionResult<User>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .update({ full_name: fullName })
-      .eq('id', user.id)
-      .select()
-      .single();
+    const usersCollection = getUsersCollection();
+    const userRef = usersCollection.doc(authUser.uid);
 
-    if (error) {
-      console.error('Error updating user profile:', error);
-      return { success: false, error: error.message };
+    const now = new Date().toISOString();
+    await userRef.update({
+      full_name: fullName,
+      updated_at: now,
+    });
+
+    const userSnapshot = await userRef.get();
+    const user = convertUser(userSnapshot);
+
+    if (!user) {
+      return { success: false, error: 'Failed to fetch updated user' };
     }
 
     revalidatePath('/dashboard');
 
-    return { success: true, data: data as User };
+    return { success: true, data: user };
   } catch (error) {
     console.error('Error in updateUserProfile:', error);
     if (error instanceof Error) {
@@ -224,7 +272,6 @@ export async function updateUserProfile(
 
 /**
  * Migrate localStorage data to database for newly authenticated user
- * This is called when a user who has been using the app locally signs in for the first time
  */
 export async function migrateLocalDataToDatabase(localData: {
   selectedDays?: string[];
@@ -255,20 +302,18 @@ export async function migrateLocalDataToDatabase(localData: {
   }>;
 }): Promise<ActionResult<{ migrated: boolean; details: string[]; plannerData?: PlannerData }>> {
   try {
-    const supabase = await createClient();
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
+    const userId = authUser.uid;
     const details: string[] = [];
     let migratedSomething = false;
-    let migrationError: string | null = null;
+    const now = new Date().toISOString();
+    const db = getAdminDb();
 
     // 1. Migrate PTO Settings
-    // Check if there are meaningful local settings to migrate (not just empty defaults)
     const hasLocalSettings = localData.settings && (
       localData.settings.initial_balance !== undefined ||
       localData.settings.pto_start_date !== undefined ||
@@ -279,77 +324,71 @@ export async function migrateLocalDataToDatabase(localData: {
     );
 
     if (hasLocalSettings) {
-      // Build update object with only the fields that have local values
-      const settingsUpdate: Record<string, unknown> = {};
+      const settingsCollection = getPtoSettingsCollection();
+      const existingSettings = await settingsCollection
+        .where('user_id', '==', userId)
+        .limit(1)
+        .get();
 
-      if (localData.settings!.initial_balance !== undefined) {
-        settingsUpdate.initial_balance = localData.settings!.initial_balance;
-      }
-      if (localData.settings!.pto_start_date !== undefined) {
-        settingsUpdate.pto_start_date = localData.settings!.pto_start_date;
-      }
-      if (localData.settings!.carry_over_limit !== undefined) {
-        settingsUpdate.carry_over_limit = localData.settings!.carry_over_limit;
-      }
-      if (localData.settings!.pto_display_unit !== undefined) {
-        settingsUpdate.pto_display_unit = localData.settings!.pto_display_unit;
-      }
-      if (localData.settings!.hours_per_day !== undefined) {
-        settingsUpdate.hours_per_day = localData.settings!.hours_per_day;
-      }
-      if (localData.settings!.hours_per_week !== undefined) {
-        settingsUpdate.hours_per_week = localData.settings!.hours_per_week;
-      }
+      if (!existingSettings.empty) {
+        const settingsRef = existingSettings.docs[0].ref;
+        const settingsUpdate: Record<string, unknown> = { updated_at: now };
 
-      if (Object.keys(settingsUpdate).length > 0) {
-        const { error: settingsError } = await supabase
-          .from('pto_settings')
-          .update(settingsUpdate)
-          .eq('user_id', user.id);
-
-        if (!settingsError) {
-          details.push('Migrated PTO settings');
-          migratedSomething = true;
-        } else {
-          console.error('Error migrating settings:', settingsError);
+        if (localData.settings!.initial_balance !== undefined) {
+          settingsUpdate.initial_balance = localData.settings!.initial_balance;
         }
+        if (localData.settings!.pto_start_date !== undefined) {
+          settingsUpdate.pto_start_date = localData.settings!.pto_start_date;
+        }
+        if (localData.settings!.carry_over_limit !== undefined) {
+          settingsUpdate.carry_over_limit = localData.settings!.carry_over_limit;
+        }
+        if (localData.settings!.pto_display_unit !== undefined) {
+          settingsUpdate.pto_display_unit = localData.settings!.pto_display_unit;
+        }
+        if (localData.settings!.hours_per_day !== undefined) {
+          settingsUpdate.hours_per_day = localData.settings!.hours_per_day;
+        }
+        if (localData.settings!.hours_per_week !== undefined) {
+          settingsUpdate.hours_per_week = localData.settings!.hours_per_week;
+        }
+
+        await settingsRef.update(settingsUpdate);
+        details.push('Migrated PTO settings');
+        migratedSomething = true;
       }
     }
 
     // 2. Migrate PTO Days
     if (localData.selectedDays && localData.selectedDays.length > 0) {
-      // Check if any PTO days already exist to prevent duplication
-      const { data: existingPtoDays } = await supabase
-        .from('pto_days')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
+      const ptoDaysCollection = getPtoDaysCollection();
+      const existingPtoDays = await ptoDaysCollection
+        .where('user_id', '==', userId)
+        .limit(1)
+        .get();
 
-      if (!existingPtoDays || existingPtoDays.length === 0) {
+      if (existingPtoDays.empty) {
         const ptoAmount = localData.settings?.pto_display_unit === 'hours'
           ? (localData.settings.hours_per_day || 8)
           : 1;
 
-        const { error: ptoInsertError } = await supabase
-          .from('pto_days')
-          .insert(
-            localData.selectedDays.map((dateStr) => ({
-              user_id: user.id,
-              date: dateStr,
-              amount: ptoAmount,
-              status: 'planned',
-              description: 'Migrated from local storage',
-            }))
-          );
-
-        if (!ptoInsertError) {
-          details.push(`Migrated ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'}`);
-          migratedSomething = true;
-        } else {
-          console.error('Error migrating PTO days:', ptoInsertError);
-          details.push('Failed to migrate PTO days from this device');
-          migrationError = ptoInsertError.message;
+        const batch = db.batch();
+        for (const dateStr of localData.selectedDays) {
+          const docRef = ptoDaysCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            date: dateStr,
+            amount: ptoAmount,
+            status: 'planned',
+            description: 'Migrated from local storage',
+            created_at: now,
+            updated_at: now,
+          });
         }
+
+        await batch.commit();
+        details.push(`Migrated ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'}`);
+        migratedSomething = true;
       } else {
         details.push(`Skipped ${localData.selectedDays.length} PTO day${localData.selectedDays.length === 1 ? '' : 's'} (PTO days already exist)`);
       }
@@ -357,30 +396,31 @@ export async function migrateLocalDataToDatabase(localData: {
 
     // 3. Migrate Holidays
     if (localData.holidays && localData.holidays.length > 0) {
-      // Check if any holidays already exist to prevent duplication
-      const { data: existingHolidays } = await supabase
-        .from('custom_holidays')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
+      const holidaysCollection = getCustomHolidaysCollection();
+      const existingHolidays = await holidaysCollection
+        .where('user_id', '==', userId)
+        .limit(1)
+        .get();
 
-      if (!existingHolidays || existingHolidays.length === 0) {
+      if (existingHolidays.empty) {
         let migratedHolidays = 0;
-        for (const holiday of localData.holidays) {
-          const { error: holidayError } = await supabase
-            .from('custom_holidays')
-            .insert({
-              user_id: user.id,
-              name: holiday.name,
-              date: holiday.date,
-              repeats_yearly: holiday.repeats_yearly ?? true,
-              is_paid_holiday: holiday.is_paid_holiday ?? true,
-            });
+        const batch = db.batch();
 
-          if (!holidayError) {
-            migratedHolidays++;
-          }
+        for (const holiday of localData.holidays) {
+          const docRef = holidaysCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            name: holiday.name,
+            date: holiday.date,
+            repeats_yearly: holiday.repeats_yearly ?? true,
+            is_paid_holiday: holiday.is_paid_holiday ?? true,
+            created_at: now,
+            updated_at: now,
+          });
+          migratedHolidays++;
         }
+
+        await batch.commit();
 
         if (migratedHolidays > 0) {
           details.push(`Migrated ${migratedHolidays} holiday${migratedHolidays === 1 ? '' : 's'}`);
@@ -393,57 +433,53 @@ export async function migrateLocalDataToDatabase(localData: {
 
     // 4. Migrate Weekend Configuration
     if (localData.weekendDays && localData.weekendDays.length > 0) {
-      for (const dayOfWeek of localData.weekendDays) {
-        const { error: weekendError } = await supabase
-          .from('weekend_config')
-          .upsert({
-            user_id: user.id,
-            day_of_week: dayOfWeek,
-            is_weekend: true,
-          }, {
-            onConflict: 'user_id,day_of_week',
-          });
+      const weekendCollection = getWeekendConfigCollection();
+      const existingConfig = await weekendCollection
+        .where('user_id', '==', userId)
+        .get();
 
-        if (weekendError) {
-          console.error('Error migrating weekend config:', weekendError);
+      for (const doc of existingConfig.docs) {
+        const data = doc.data();
+        const isWeekend = localData.weekendDays.includes(data.day_of_week);
+        if (data.is_weekend !== isWeekend) {
+          await doc.ref.update({ is_weekend: isWeekend, updated_at: now });
         }
       }
+
       details.push('Migrated weekend configuration');
       migratedSomething = true;
     }
 
     // 5. Migrate Accrual Rules
     if (localData.accrualRules && localData.accrualRules.length > 0) {
-      // Check if any accrual rules already exist (might have been created by initializeUserAccount)
-      const { data: existingRules } = await supabase
-        .from('pto_accrual_rules')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1);
+      const rulesCollection = getPtoAccrualRulesCollection();
+      const existingRules = await rulesCollection
+        .where('user_id', '==', userId)
+        .limit(1)
+        .get();
 
-      // Only migrate if no rules exist yet
-      if (!existingRules || existingRules.length === 0) {
+      if (existingRules.empty) {
         let migratedRules = 0;
-        for (const rule of localData.accrualRules) {
-          const { error: ruleError } = await supabase
-            .from('pto_accrual_rules')
-            .insert({
-              user_id: user.id,
-              name: rule.name,
-              accrual_amount: rule.accrual_amount,
-              accrual_frequency: rule.accrual_frequency,
-              accrual_day: rule.accrual_day,
-              effective_date: rule.effective_date,
-              end_date: rule.end_date,
-              is_active: rule.is_active,
-            });
+        const batch = db.batch();
 
-          if (!ruleError) {
-            migratedRules++;
-          } else {
-            console.error('Error migrating accrual rule:', ruleError);
-          }
+        for (const rule of localData.accrualRules) {
+          const docRef = rulesCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            name: rule.name,
+            accrual_amount: rule.accrual_amount,
+            accrual_frequency: rule.accrual_frequency,
+            accrual_day: rule.accrual_day ?? null,
+            effective_date: rule.effective_date,
+            end_date: rule.end_date ?? null,
+            is_active: rule.is_active,
+            created_at: now,
+            updated_at: now,
+          });
+          migratedRules++;
         }
+
+        await batch.commit();
 
         if (migratedRules > 0) {
           details.push(`Migrated ${migratedRules} accrual rule${migratedRules === 1 ? '' : 's'}`);
@@ -461,12 +497,6 @@ export async function migrateLocalDataToDatabase(localData: {
       if (refreshed.success && refreshed.data) {
         refreshedPlannerData = refreshed.data;
       }
-    }
-
-    if (migrationError) {
-      revalidatePath('/');
-      revalidatePath('/dashboard');
-      return { success: false, error: migrationError };
     }
 
     revalidatePath('/');
@@ -491,7 +521,6 @@ export async function migrateLocalDataToDatabase(localData: {
 
 /**
  * Replace all user data with local data
- * Used when user chooses "use local" during conflict resolution
  */
 export async function replaceWithLocalData(localData: {
   selectedDays: string[];
@@ -521,185 +550,138 @@ export async function replaceWithLocalData(localData: {
   }>;
 }): Promise<ActionResult<{ plannerData: PlannerData }>> {
   try {
-    const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
-    console.log('[replaceWithLocalData] Starting replacement for user:', user.id, {
-      ptoDaysCount: localData.selectedDays?.length || 0,
-      holidaysCount: localData.holidays?.length || 0,
-      accrualRulesCount: localData.accrualRules?.length || 0,
-    });
+    const userId = authUser.uid;
+    const now = new Date().toISOString();
+    const db = getAdminDb();
 
     // 1. Delete all existing PTO days
-    const { error: deletePtoError } = await supabase
-      .from('pto_days')
-      .delete()
-      .eq('user_id', user.id);
-
-    if (deletePtoError) {
-      console.error('[replaceWithLocalData] Error deleting PTO days:', deletePtoError);
+    const ptoDaysCollection = getPtoDaysCollection();
+    const existingPtoDays = await ptoDaysCollection.where('user_id', '==', userId).get();
+    for (const doc of existingPtoDays.docs) {
+      await doc.ref.delete();
     }
 
     // 2. Delete all existing holidays
-    const { error: deleteHolidaysError } = await supabase
-      .from('custom_holidays')
-      .delete()
-      .eq('user_id', user.id);
-
-    if (deleteHolidaysError) {
-      console.error('[replaceWithLocalData] Error deleting holidays:', deleteHolidaysError);
+    const holidaysCollection = getCustomHolidaysCollection();
+    const existingHolidays = await holidaysCollection.where('user_id', '==', userId).get();
+    for (const doc of existingHolidays.docs) {
+      await doc.ref.delete();
     }
 
     // 3. Delete all existing accrual rules
-    const { error: deleteAccrualError } = await supabase
-      .from('pto_accrual_rules')
-      .delete()
-      .eq('user_id', user.id);
-
-    if (deleteAccrualError) {
-      console.error('[replaceWithLocalData] Error deleting accrual rules:', deleteAccrualError);
+    const rulesCollection = getPtoAccrualRulesCollection();
+    const existingRules = await rulesCollection.where('user_id', '==', userId).get();
+    for (const doc of existingRules.docs) {
+      await doc.ref.delete();
     }
 
-    // 4. Insert local PTO days with error handling
-    let insertedPtoDays = 0;
-    let ptoInsertError: string | null = null;
+    // 4. Insert local PTO days
     if (localData.selectedDays && localData.selectedDays.length > 0) {
       const ptoAmount = localData.settings?.pto_display_unit === 'hours'
         ? (localData.settings.hours_per_day || 8)
         : 1;
 
-      console.log('[replaceWithLocalData] Inserting PTO days:', localData.selectedDays);
-
-      const { error: insertError } = await supabase
-        .from('pto_days')
-        .insert(
-          localData.selectedDays.map((dateStr) => ({
-            user_id: user.id,
-            date: dateStr,
-            amount: ptoAmount,
-            status: 'planned',
-            description: 'Imported from local storage',
-          }))
-        );
-
-      if (insertError) {
-        console.error('[replaceWithLocalData] Error inserting PTO days:', insertError);
-        ptoInsertError = insertError.message;
-      } else {
-        insertedPtoDays = localData.selectedDays.length;
+      const batch = db.batch();
+      for (const dateStr of localData.selectedDays) {
+        const docRef = ptoDaysCollection.doc();
+        batch.set(docRef, {
+          user_id: userId,
+          date: dateStr,
+          amount: ptoAmount,
+          status: 'planned',
+          description: 'Imported from local storage',
+          created_at: now,
+          updated_at: now,
+        });
       }
-
-      console.log('[replaceWithLocalData] Inserted PTO days:', insertedPtoDays, 'of', localData.selectedDays.length);
+      await batch.commit();
     }
 
-    // 5. Insert local holidays with error handling
-    let insertedHolidays = 0;
+    // 5. Insert local holidays
     if (localData.holidays && localData.holidays.length > 0) {
+      const batch = db.batch();
       for (const holiday of localData.holidays) {
-        const { error: holidayError } = await supabase
-          .from('custom_holidays')
-          .insert({
-            user_id: user.id,
-            name: holiday.name,
-            date: holiday.date,
-            repeats_yearly: holiday.repeats_yearly ?? true,
-            is_paid_holiday: holiday.is_paid_holiday ?? true,
-          });
-
-        if (holidayError) {
-          console.error('[replaceWithLocalData] Error inserting holiday:', holiday.name, holidayError);
-        } else {
-          insertedHolidays++;
-        }
+        const docRef = holidaysCollection.doc();
+        batch.set(docRef, {
+          user_id: userId,
+          name: holiday.name,
+          date: holiday.date,
+          repeats_yearly: holiday.repeats_yearly ?? true,
+          is_paid_holiday: holiday.is_paid_holiday ?? true,
+          created_at: now,
+          updated_at: now,
+        });
       }
-
-      console.log('[replaceWithLocalData] Inserted holidays:', insertedHolidays, 'of', localData.holidays.length);
+      await batch.commit();
     }
 
-    // 6. Insert local accrual rules with error handling
-    let insertedAccrualRules = 0;
+    // 6. Insert local accrual rules
     if (localData.accrualRules && localData.accrualRules.length > 0) {
+      const batch = db.batch();
       for (const rule of localData.accrualRules) {
-        const { error: accrualError } = await supabase
-          .from('pto_accrual_rules')
-          .insert({
-            user_id: user.id,
-            name: rule.name,
-            accrual_amount: rule.accrual_amount,
-            accrual_frequency: rule.accrual_frequency,
-            accrual_day: rule.accrual_day,
-            effective_date: rule.effective_date,
-            end_date: rule.end_date,
-            is_active: rule.is_active,
-          });
-
-        if (accrualError) {
-          console.error('[replaceWithLocalData] Error inserting accrual rule:', rule.name, accrualError);
-        } else {
-          insertedAccrualRules++;
-        }
+        const docRef = rulesCollection.doc();
+        batch.set(docRef, {
+          user_id: userId,
+          name: rule.name,
+          accrual_amount: rule.accrual_amount,
+          accrual_frequency: rule.accrual_frequency,
+          accrual_day: rule.accrual_day ?? null,
+          effective_date: rule.effective_date,
+          end_date: rule.end_date ?? null,
+          is_active: rule.is_active,
+          created_at: now,
+          updated_at: now,
+        });
       }
-
-      console.log('[replaceWithLocalData] Inserted accrual rules:', insertedAccrualRules, 'of', localData.accrualRules.length);
+      await batch.commit();
     }
 
     // 7. Update settings if provided
     if (localData.settings && Object.keys(localData.settings).length > 0) {
-      const settingsUpdate: Record<string, unknown> = {};
-      if (localData.settings.initial_balance !== undefined) {
-        settingsUpdate.initial_balance = localData.settings.initial_balance;
-      }
-      if (localData.settings.pto_start_date !== undefined) {
-        settingsUpdate.pto_start_date = localData.settings.pto_start_date;
-      }
-      if (localData.settings.carry_over_limit !== undefined) {
-        settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
-      }
-      if (localData.settings.pto_display_unit !== undefined) {
-        settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
-      }
-      if (localData.settings.hours_per_day !== undefined) {
-        settingsUpdate.hours_per_day = localData.settings.hours_per_day;
-      }
-      if (localData.settings.hours_per_week !== undefined) {
-        settingsUpdate.hours_per_week = localData.settings.hours_per_week;
-      }
+      const settingsCollection = getPtoSettingsCollection();
+      const existingSettings = await settingsCollection.where('user_id', '==', userId).limit(1).get();
 
-      if (Object.keys(settingsUpdate).length > 0) {
-        const { error: settingsError } = await supabase
-          .from('pto_settings')
-          .update(settingsUpdate)
-          .eq('user_id', user.id);
+      if (!existingSettings.empty) {
+        const settingsRef = existingSettings.docs[0].ref;
+        const settingsUpdate: Record<string, unknown> = { updated_at: now };
 
-        if (settingsError) {
-          console.error('[replaceWithLocalData] Error updating settings:', settingsError);
+        if (localData.settings.initial_balance !== undefined) {
+          settingsUpdate.initial_balance = localData.settings.initial_balance;
         }
+        if (localData.settings.pto_start_date !== undefined) {
+          settingsUpdate.pto_start_date = localData.settings.pto_start_date;
+        }
+        if (localData.settings.carry_over_limit !== undefined) {
+          settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
+        }
+        if (localData.settings.pto_display_unit !== undefined) {
+          settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
+        }
+        if (localData.settings.hours_per_day !== undefined) {
+          settingsUpdate.hours_per_day = localData.settings.hours_per_day;
+        }
+        if (localData.settings.hours_per_week !== undefined) {
+          settingsUpdate.hours_per_week = localData.settings.hours_per_week;
+        }
+
+        await settingsRef.update(settingsUpdate);
       }
     }
 
     // 8. Update weekend config if provided
     if (localData.weekendDays && localData.weekendDays.length > 0) {
-      // Reset all to non-weekend first
-      await supabase
-        .from('weekend_config')
-        .update({ is_weekend: false })
-        .eq('user_id', user.id);
+      const weekendCollection = getWeekendConfigCollection();
+      const existingConfig = await weekendCollection.where('user_id', '==', userId).get();
 
-      // Set the local weekend days
-      for (const dayOfWeek of localData.weekendDays) {
-        await supabase
-          .from('weekend_config')
-          .upsert({
-            user_id: user.id,
-            day_of_week: dayOfWeek,
-            is_weekend: true,
-          }, {
-            onConflict: 'user_id,day_of_week',
-          });
+      for (const doc of existingConfig.docs) {
+        const data = doc.data();
+        const isWeekend = localData.weekendDays.includes(data.day_of_week);
+        await doc.ref.update({ is_weekend: isWeekend, updated_at: now });
       }
     }
 
@@ -710,12 +692,6 @@ export async function replaceWithLocalData(localData: {
     if (!refreshed.success || !refreshed.data) {
       return { success: false, error: 'Failed to refresh data after replacement' };
     }
-
-    console.log('[replaceWithLocalData] Complete. Refreshed data:', {
-      ptoDays: refreshed.data.ptoDays?.length || 0,
-      holidays: refreshed.data.holidays?.length || 0,
-      accrualRules: refreshed.data.accrualRules?.length || 0,
-    });
 
     return { success: true, data: { plannerData: refreshed.data } };
   } catch (error) {
@@ -729,11 +705,6 @@ export async function replaceWithLocalData(localData: {
 
 /**
  * Merge local data with existing database data
- * Used when user chooses "merge" during conflict resolution
- * - PTO days: Add local days that don't already exist in DB
- * - Settings: Local settings override DB settings
- * - Holidays: Add local holidays that don't already exist (by date+name)
- * - Accrual rules: Add local rules that don't already exist (by name)
  */
 export async function mergeLocalData(localData: {
   selectedDays: string[];
@@ -763,171 +734,154 @@ export async function mergeLocalData(localData: {
   }>;
 }): Promise<ActionResult<{ plannerData: PlannerData; mergedCounts: { ptoDays: number; holidays: number; accrualRules: number } }>> {
   try {
-    const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
       return { success: false, error: 'Unauthorized' };
     }
 
+    const userId = authUser.uid;
+    const now = new Date().toISOString();
+    const db = getAdminDb();
+
     let mergedPtoDays = 0;
     let mergedHolidays = 0;
+    let mergedAccrualRules = 0;
 
-    // 1. Merge PTO days (add only non-duplicate dates)
+    // 1. Merge PTO days
     if (localData.selectedDays && localData.selectedDays.length > 0) {
-      // Get existing PTO days
-      const { data: existingPtoDays, error: existingPtoError } = await supabase
-        .from('pto_days')
-        .select('date')
-        .eq('user_id', user.id);
-
-      if (existingPtoError) {
-        console.error('[mergeLocalData] Error fetching PTO days:', existingPtoError);
-        return { success: false, error: existingPtoError.message };
-      }
-
-      const existingDates = new Set((existingPtoDays ?? []).map((d) => d.date));
+      const ptoDaysCollection = getPtoDaysCollection();
+      const existingPtoDays = await ptoDaysCollection.where('user_id', '==', userId).get();
+      const existingDates = new Set(existingPtoDays.docs.map(doc => doc.data().date));
 
       const ptoAmount = localData.settings?.pto_display_unit === 'hours'
         ? (localData.settings.hours_per_day || 8)
         : 1;
 
-      const newPtoDays = localData.selectedDays
-        .filter((dateStr) => !existingDates.has(dateStr))
-        .map((dateStr) => ({
-          user_id: user.id,
-          date: dateStr,
-          amount: ptoAmount,
-          status: 'planned',
-          description: 'Merged from local storage',
-        }));
+      const newDays = localData.selectedDays.filter(dateStr => !existingDates.has(dateStr));
 
-      if (newPtoDays.length > 0) {
-        const { error: insertError } = await supabase
-          .from('pto_days')
-          .insert(newPtoDays);
-
-        if (insertError) {
-          console.error('[mergeLocalData] Error inserting PTO days:', insertError);
-          return { success: false, error: insertError.message };
+      if (newDays.length > 0) {
+        const batch = db.batch();
+        for (const dateStr of newDays) {
+          const docRef = ptoDaysCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            date: dateStr,
+            amount: ptoAmount,
+            status: 'planned',
+            description: 'Merged from local storage',
+            created_at: now,
+            updated_at: now,
+          });
         }
-
-        mergedPtoDays = newPtoDays.length;
+        await batch.commit();
+        mergedPtoDays = newDays.length;
       }
     }
 
-    // 2. Merge holidays (add only non-duplicate date+name combinations)
+    // 2. Merge holidays
     if (localData.holidays && localData.holidays.length > 0) {
-      // Get existing holidays
-      const { data: existingHolidays } = await supabase
-        .from('custom_holidays')
-        .select('date, name')
-        .eq('user_id', user.id);
-
+      const holidaysCollection = getCustomHolidaysCollection();
+      const existingHolidays = await holidaysCollection.where('user_id', '==', userId).get();
       const existingKeys = new Set(
-        existingHolidays?.map(h => `${h.date}__${h.name}`) || []
+        existingHolidays.docs.map(doc => {
+          const data = doc.data();
+          return `${data.date}__${data.name}`;
+        })
       );
 
+      const batch = db.batch();
       for (const holiday of localData.holidays) {
         const key = `${holiday.date}__${holiday.name}`;
         if (!existingKeys.has(key)) {
-          const { error } = await supabase
-            .from('custom_holidays')
-            .insert({
-              user_id: user.id,
-              name: holiday.name,
-              date: holiday.date,
-              repeats_yearly: holiday.repeats_yearly ?? true,
-              is_paid_holiday: holiday.is_paid_holiday ?? true,
-            });
-          if (!error) {
-            mergedHolidays++;
-          }
+          const docRef = holidaysCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            name: holiday.name,
+            date: holiday.date,
+            repeats_yearly: holiday.repeats_yearly ?? true,
+            is_paid_holiday: holiday.is_paid_holiday ?? true,
+            created_at: now,
+            updated_at: now,
+          });
+          mergedHolidays++;
         }
       }
+      if (mergedHolidays > 0) {
+        await batch.commit();
+      }
     }
 
-    // 3. Update settings (local settings override)
+    // 3. Update settings
     if (localData.settings && Object.keys(localData.settings).length > 0) {
-      const settingsUpdate: Record<string, unknown> = {};
-      if (localData.settings.initial_balance !== undefined) {
-        settingsUpdate.initial_balance = localData.settings.initial_balance;
-      }
-      if (localData.settings.pto_start_date !== undefined) {
-        settingsUpdate.pto_start_date = localData.settings.pto_start_date;
-      }
-      if (localData.settings.carry_over_limit !== undefined) {
-        settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
-      }
-      if (localData.settings.pto_display_unit !== undefined) {
-        settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
-      }
-      if (localData.settings.hours_per_day !== undefined) {
-        settingsUpdate.hours_per_day = localData.settings.hours_per_day;
-      }
-      if (localData.settings.hours_per_week !== undefined) {
-        settingsUpdate.hours_per_week = localData.settings.hours_per_week;
-      }
+      const settingsCollection = getPtoSettingsCollection();
+      const existingSettings = await settingsCollection.where('user_id', '==', userId).limit(1).get();
 
-      if (Object.keys(settingsUpdate).length > 0) {
-        await supabase
-          .from('pto_settings')
-          .update(settingsUpdate)
-          .eq('user_id', user.id);
+      if (!existingSettings.empty) {
+        const settingsRef = existingSettings.docs[0].ref;
+        const settingsUpdate: Record<string, unknown> = { updated_at: now };
+
+        if (localData.settings.initial_balance !== undefined) {
+          settingsUpdate.initial_balance = localData.settings.initial_balance;
+        }
+        if (localData.settings.pto_start_date !== undefined) {
+          settingsUpdate.pto_start_date = localData.settings.pto_start_date;
+        }
+        if (localData.settings.carry_over_limit !== undefined) {
+          settingsUpdate.carry_over_limit = localData.settings.carry_over_limit;
+        }
+        if (localData.settings.pto_display_unit !== undefined) {
+          settingsUpdate.pto_display_unit = localData.settings.pto_display_unit;
+        }
+        if (localData.settings.hours_per_day !== undefined) {
+          settingsUpdate.hours_per_day = localData.settings.hours_per_day;
+        }
+        if (localData.settings.hours_per_week !== undefined) {
+          settingsUpdate.hours_per_week = localData.settings.hours_per_week;
+        }
+
+        await settingsRef.update(settingsUpdate);
       }
     }
 
-    // 4. Merge weekend config (local overrides)
+    // 4. Merge weekend config
     if (localData.weekendDays && localData.weekendDays.length > 0) {
-      // Reset all to non-weekend first
-      await supabase
-        .from('weekend_config')
-        .update({ is_weekend: false })
-        .eq('user_id', user.id);
+      const weekendCollection = getWeekendConfigCollection();
+      const existingConfig = await weekendCollection.where('user_id', '==', userId).get();
 
-      // Set the local weekend days
-      for (const dayOfWeek of localData.weekendDays) {
-        await supabase
-          .from('weekend_config')
-          .upsert({
-            user_id: user.id,
-            day_of_week: dayOfWeek,
-            is_weekend: true,
-          }, {
-            onConflict: 'user_id,day_of_week',
-          });
+      for (const doc of existingConfig.docs) {
+        const data = doc.data();
+        const isWeekend = localData.weekendDays.includes(data.day_of_week);
+        await doc.ref.update({ is_weekend: isWeekend, updated_at: now });
       }
     }
 
-    // 5. Merge accrual rules (add only non-duplicate names)
-    let mergedAccrualRules = 0;
+    // 5. Merge accrual rules
     if (localData.accrualRules && localData.accrualRules.length > 0) {
-      // Get existing accrual rules
-      const { data: existingRules } = await supabase
-        .from('pto_accrual_rules')
-        .select('name')
-        .eq('user_id', user.id);
+      const rulesCollection = getPtoAccrualRulesCollection();
+      const existingRules = await rulesCollection.where('user_id', '==', userId).get();
+      const existingNames = new Set(existingRules.docs.map(doc => doc.data().name));
 
-      const existingNames = new Set(existingRules?.map(r => r.name) || []);
-
+      const batch = db.batch();
       for (const rule of localData.accrualRules) {
         if (!existingNames.has(rule.name)) {
-          const { error } = await supabase
-            .from('pto_accrual_rules')
-            .insert({
-              user_id: user.id,
-              name: rule.name,
-              accrual_amount: rule.accrual_amount,
-              accrual_frequency: rule.accrual_frequency,
-              accrual_day: rule.accrual_day,
-              effective_date: rule.effective_date,
-              end_date: rule.end_date,
-              is_active: rule.is_active,
-            });
-          if (!error) {
-            mergedAccrualRules++;
-          }
+          const docRef = rulesCollection.doc();
+          batch.set(docRef, {
+            user_id: userId,
+            name: rule.name,
+            accrual_amount: rule.accrual_amount,
+            accrual_frequency: rule.accrual_frequency,
+            accrual_day: rule.accrual_day ?? null,
+            effective_date: rule.effective_date,
+            end_date: rule.end_date ?? null,
+            is_active: rule.is_active,
+            created_at: now,
+            updated_at: now,
+          });
+          mergedAccrualRules++;
         }
+      }
+      if (mergedAccrualRules > 0) {
+        await batch.commit();
       }
     }
 
@@ -938,12 +892,6 @@ export async function mergeLocalData(localData: {
     if (!refreshed.success || !refreshed.data) {
       return { success: false, error: 'Failed to refresh data after merge' };
     }
-
-    console.log('[mergeLocalData] Complete. Merged counts:', {
-      ptoDays: mergedPtoDays,
-      holidays: mergedHolidays,
-      accrualRules: mergedAccrualRules,
-    });
 
     return {
       success: true,
