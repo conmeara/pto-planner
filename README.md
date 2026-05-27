@@ -98,11 +98,36 @@ Create `.env.local` in the project root and restart `npm run dev` whenever you c
 | --- | --- |
 | `npm run dev` | Start Next.js in development mode |
 | `npm run build` | Production build (runs type checks + Next compiler) |
+| `npm run ptoclaw -- ...` | Run the local-first PTOClaw SQLite CLI |
 | `npm run start` | Serve the production build |
 | `npm run setup:local` | Convenience wrapper: start local Supabase + migrate + seed |
 | `npm run supabase:start|stop|status` | Manage local Supabase via Docker |
 | `npm run supabase:link|push|pull|reset` | Sync migrations with a remote project |
 | `npm run supabase:types` | Generate TypeScript types from Supabase |
+
+## PTOClaw CLI
+
+This repo also includes an MVP OpenClaw plugin layer named `ptoclaw`. It keeps the existing Next app intact and adds a local-first SQLite CLI for PTO settings, planned time off, forecasts, and safe calendar sync previews.
+
+Storage defaults to `~/.local/share/ptoclaw/ptoclaw.sqlite`. Set `PTOCLAW_DB=/path/to/ptoclaw.sqlite` or pass `--db PATH` to use another SQLite database, including an external personal-data database. No private paths are hardcoded.
+
+```bash
+npm run ptoclaw -- init
+npm run ptoclaw -- settings set --balance-hours 80 --accrual-hours 8 --accrual-cadence monthly --hours-per-day 8
+npm run ptoclaw -- status
+npm run ptoclaw -- plan add --start 2026-07-06 --end 2026-07-10 --type vacation --status planned --title "Summer break"
+npm run ptoclaw -- plan list --upcoming
+npm run ptoclaw -- forecast --through 2026-12-31
+npm run ptoclaw -- calendar sync --dry-run --json
+```
+
+Mutating commands are intentionally cautious. `plan add --dry-run` previews an insert, and `plan remove <id>` requires `--force` or `--dry-run`. Calendar sync is dry-run only in this MVP; it emits proposed all-day events with stable external IDs for a future Apple Calendar adapter.
+
+The CLI also supports `--json`, `--no-input`, and `--verbose` global flags:
+
+```bash
+npm run ptoclaw -- --db /tmp/ptoclaw.sqlite --json db stats
+```
 
 ## Documentation & Support
 

@@ -1,8 +1,12 @@
 {
   "private": true,
+  "bin": {
+    "ptoclaw": "bin/ptoclaw.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "ptoclaw": "node bin/ptoclaw.mjs",
     "start": "next start",
     "supabase:install": "npm install -g supabase",
     "supabase:login": "supabase login",
